@@ -1,0 +1,35 @@
+[project]
+name = "ShCC"
+version = "0.1.0"
+description = "Shukart Control Chart analysis for multivariate data"
+authors = [
+    {name = "Nebolsin Vasili", email = "nebolsinvasili@gmail.com"}
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pandas (>=3.0.5,<4.0.0)",
+    "numpy (>=2.5.1,<3.0.0)",
+    "scipy (>=1.18.0,<2.0.0)",
+    "matplotlib (>=3.11.1,<4.0.0)",
+    "jupyter (>=1.1.1,<2.0.0)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "black (>=26.5.1,<27.0.0)",
+    "flake8 (>=7.3.0,<8.0.0)",
+    "isort (>=8.0.1,<9.0.0)",
+    "mypy (>=2.3.0,<3.0.0)"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
