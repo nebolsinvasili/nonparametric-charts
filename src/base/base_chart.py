@@ -79,7 +79,7 @@ class BaseControlChart(ABC):
         
         Поиск файла происходит в следующем порядке:
         1. Указанный путь
-        2. Переменная окружения SHCC_COEFFICIENTS
+        2. Переменная окружения NONPARAMETRIC_CHARTS_COEFFICIENTS
         3. Стандартные пути в проекте
         4. Текущая директория
         
@@ -88,7 +88,7 @@ class BaseControlChart(ABC):
         Dict: Словарь с коэффициентами для разных n
         """
         if file_path is None:
-            file_path = os.environ.get('SHCC_COEFFICIENTS', 'coefficients.json')
+            file_path = os.environ.get('NONPARAMETRIC_CHARTS_COEFFICIENTS', 'coefficients.json')
         
         # Поиск файла в различных местах
         search_paths = [
@@ -148,21 +148,25 @@ class BaseControlChart(ABC):
     
     def _setup_style(self):
         """
-        Настройка стиля для отображения графиков
-        
-        Устанавливает:
-        - Шрифты (Arial, DejaVu Sans)
-        - Размеры шрифтов для осей, заголовков, легенд
-        - Качество изображения (300 DPI)
+        Настройка стиля для отображения графиков.
+
+        Использует минималистичный LaTeX-стиль проекта
+        (:mod:`src.utils.plot_style`): serif-шрифт и математика Computer Modern,
+        без «мусора», сдержанная палитра. При недоступности модуля откатывается
+        к безопасным настройкам matplotlib.
         """
+        try:
+            from src.utils.plot_style import apply_minimal_latex_style
+        except ImportError:
+            apply_minimal_latex_style = None
+
+        if apply_minimal_latex_style is not None:
+            apply_minimal_latex_style()
+            return
+
+        # Fallback: базовые настройки без внешнего модуля.
         plt.style.use('default')
-        plt.rcParams['font.family'] = 'sans-serif'
-        plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Helvetica']
-        plt.rcParams['axes.labelsize'] = 12
-        plt.rcParams['axes.titlesize'] = 14
-        plt.rcParams['xtick.labelsize'] = 10
-        plt.rcParams['ytick.labelsize'] = 10
-        plt.rcParams['legend.fontsize'] = 10
+        plt.rcParams['font.family'] = 'serif'
         plt.rcParams['figure.dpi'] = 300
     
     @abstractmethod
@@ -328,11 +332,11 @@ class BaseControlChart(ABC):
         
         zone_width = (ucl - cl) / 3
         
-        ax.axhspan(cl + 2*zone_width, ucl, alpha=0.1, color='yellow', label='Зона A')
+        ax.axhspan(cl + 2*zone_width, ucl, alpha=0.1, color='yellow', label='Зона A (2σ…3σ)')
         ax.axhspan(lcl, cl - 2*zone_width, alpha=0.1, color='yellow')
-        ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.1, color='orange', label='Зона B')
+        ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.1, color='orange', label='Зона B (1σ…2σ)')
         ax.axhspan(cl - 2*zone_width, cl - zone_width, alpha=0.1, color='orange')
-        ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.1, color='lightgreen', label='Зона C')
+        ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.1, color='lightgreen', label='Зона C (0…1σ)')
     
     def _add_values_on_points(self, ax, x_values: np.ndarray, y_values: np.ndarray,
                              cl: float, ucl: float, lcl: float,

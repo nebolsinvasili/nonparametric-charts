@@ -27,16 +27,17 @@
 Три подхода к расчёту константы a:
 ----------------------------------
 1. **Консервативный** (по книге, стр. 191):
-       a = наименьшее целое с P(SN ≥ a) ≤ FAR₀/2
-       Гарантирует FAR ≤ FAR₀.
+       a = наименьшее достижимое (той же чётности, что и n)
+       с P(SN ≥ a) ≤ FAR₀/2; гарантирует FAR ≤ FAR₀.
+       Если вероятность недостижима (малое n) — a = n.
 
 2. **«Ближайший»** (обучение / сравнение):
        a = argmin_a |P(|SN| ≥ a) − α|
        Достигнутый FAR может превышать α.
 
 3. **Симметричный квантильный** (альтернатива):
-       a = наименьшее нечётное с P(SN ≥ a) ≤ FAR₀/2
-       Использует симметрию распределения SN относительно 0.
+       a — наименьшее достижимое с P(SN ≥ a) ≤ FAR₀/2;
+       для чётного n совпадает с консервативным.
 """
 
 from __future__ import annotations
@@ -187,14 +188,21 @@ class SignChart(BaseControlChart):
     @classmethod
     def _calc_a_conservative(cls, n: int, far0: float) -> Tuple[int, float]:
         """
-        Подход 1: консервативный (книга, стр. 191).
-        a — наименьшее целое такое, что P(SN ≥ a) ≤ FAR₀/2.
+        Подход 1: консервативный (книга, стр. 191–192).
+
+        a — наименьшее *достижимое* значение SN (той же чётности, что и n),
+        для которого P(SN ≥ a) ≤ FAR₀/2; это гарантирует FAR ≤ FAR₀.
+
+        Если целевая вероятность недостижима (малое n, книга стр. 190),
+        берётся максимально возможное a = n — самые широкие границы и
+        наименьший достижимый FAR (как для n = 1, где a = 1, FAR = 1).
         """
         target = far0 / 2
-        for a in range(n, 0, -1):
+        start = 1 if n % 2 == 1 else 2
+        for a in range(start, n + 1, 2):
             if cls._p_sn_ge_a(n, a) <= target:
                 return a, 2.0 * cls._p_sn_ge_a(n, a)
-        return 1, 2.0 * cls._p_sn_ge_a(n, 1)
+        return n, 2.0 * cls._p_sn_ge_a(n, n)
 
     @classmethod
     def _calc_a_nearest(cls, n: int, alpha: float) -> Tuple[int, float]:
@@ -214,18 +222,18 @@ class SignChart(BaseControlChart):
     def _calc_a_symmetric(cls, n: int, far0: float) -> Tuple[int, float]:
         """
         Подход 3: симметричный квантильный.
-        a — наименьшее нечётное с P(SN ≥ a) ≤ FAR₀/2.
-        Обеспечивает симметрию для карт с нечётным n.
+
+        a — наименьшее достижимое значение (той же чётности, что и n) с
+        P(SN ≥ a) ≤ FAR₀/2; границы ±a при этом симметричны. Для чётного n
+        совпадает с консервативным подходом.
         """
-        # Если n чётное, используем тот же порог, что и консервативный
         if n % 2 == 0:
             return cls._calc_a_conservative(n, far0)
         target = far0 / 2
-        # Ищем среди нечётных a
-        for a in range(n if n % 2 == 1 else n - 1, 0, -2):
+        for a in range(1, n + 1, 2):
             if cls._p_sn_ge_a(n, a) <= target:
                 return a, 2.0 * cls._p_sn_ge_a(n, a)
-        return 1, 2.0 * cls._p_sn_ge_a(n, 1)
+        return n, 2.0 * cls._p_sn_ge_a(n, n)
 
     def _calculate_c_value(self) -> int:
         """Расчёт c согласно выбранному подходу."""
@@ -397,11 +405,11 @@ class SignChart(BaseControlChart):
         fill_zones : bool, default=False
             Если True — заливать зоны полупрозрачным цветом.
 
-        Цвета зон
+        Цвета зон (σ = a/3 — контрольная граница a соответствует 3σ)
         ---------
-        Zone A (внешняя, |SN| ∈ [2a/3, a])  — красный
-        Zone B (средняя, |SN| ∈ [a/3, 2a/3]) — жёлтый
-        Zone C (внутренняя, |SN| < a/3)      — зелёный
+        Зона A (внешняя, 2σ…3σ)   — красный
+        Зона B (средняя, 1σ…2σ)   — жёлтый
+        Зона C (внутренняя, 0…1σ) — зелёный
         """
         if self.control_limits is None:
             self.calculate_limits()
@@ -443,15 +451,15 @@ class SignChart(BaseControlChart):
 
             # Подписи зон справа
             x_right = x.max() + 0.4
-            ax.text(x_right, (z2 + a) / 2, 'Zone A', color=zone_colors['A'],
+            ax.text(x_right, (z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, (z1 + z2) / 2, 'Zone B', color='darkgoldenrod',
+            ax.text(x_right, (z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, 0, 'Zone C', color=zone_colors['C'],
+            ax.text(x_right, 0.5 * z1, 'Зона C (0…1σ)', color=zone_colors['C'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z1 + z2) / 2, 'Zone B', color='darkgoldenrod',
+            ax.text(x_right, -(z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z2 + a) / 2, 'Zone A', color=zone_colors['A'],
+            ax.text(x_right, -(z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
 
         # --- Точки: одного размера, нарушения — красные ---
@@ -498,7 +506,7 @@ class SignChart(BaseControlChart):
         ax.set_xlabel('Номер подгруппы', fontsize=12)
         ax.set_ylabel('SN = n⁺ − n⁻', fontsize=12)
         ax.set_xticks(x)
-        ax.set_xlim(x.min() - 0.5, x.max() + 1.8)
+        ax.set_xlim(x.min() - 0.5, x.max() + 3.2)
         ax.set_ylim(-(a + max(2, a * 0.3)), a + max(2, a * 0.3))
 
         approach_label = self.APPROACH_LABELS.get(self.approach, self.approach)
@@ -509,12 +517,9 @@ class SignChart(BaseControlChart):
 
         # --- Информационный блок ---
         info = (
-            f"μ₀ = {self.target_value:.4f}\n"
-            f"n = {self.sample_size},  m = {len(self.subgroups)}\n"
-            f"a = {a}\n"
-            f"FAR = {self.control_limits['FAR']:.4f}\n"
-            f"ARL_IC = {self.control_limits['ARL_IC']:.1f}\n"
-            f"MRL_IC = {self.control_limits['MRL_IC']}"
+            f"μ₀ = {self.target_value:.4f}    n = {self.sample_size}, m = {len(self.subgroups)}\n"
+            f"a = {a}   (σ = a/3)\n"
+            f"FAR = {self.control_limits['FAR']:.4f}   ARL = {self.control_limits['ARL_IC']:.1f}   MRL = {self.control_limits['MRL_IC']}"
         )
         ax.text(0.985, 0.98, info, transform=ax.transAxes,
                 fontsize=9, va='top', ha='right',
@@ -527,9 +532,9 @@ class SignChart(BaseControlChart):
             from matplotlib.lines import Line2D
             zone_handles = [
                 Line2D([0], [0], color=zone_colors['A'], linestyle=':',
-                    linewidth=1.5, label='Zone A (границы)'),
+                    linewidth=1.5, label='Граница зоны A (2σ)'),
                 Line2D([0], [0], color='darkgoldenrod', linestyle=':',
-                    linewidth=1.5, label='Zone B (границы)'),
+                    linewidth=1.5, label='Граница зоны B (1σ)'),
             ]
             handles = handles + zone_handles
             labels = labels + [h.get_label() for h in zone_handles]

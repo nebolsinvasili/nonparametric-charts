@@ -1,0 +1,453 @@
+% !TEX program = pdflatex
+% Знаковая карта Шухарта (Shewhart-SN): теория и расчёт контрольных границ.
+% Первоисточник: Chakraborti S., Graham M.A. (2019) Nonparametric Statistical
+% Process Control, Wiley. Раздел 4.2.1.1, стр. 189--196.
+% Сборка: pdflatex (Cyrillic через T2A + babel russian).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{pgfplots}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{hyperref}
+
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,
+            bookmarks=false}
+
+\definecolor{accent}{RGB}{46,134,171}
+\definecolor{alert}{RGB}{200,30,30}
+\definecolor{softgray}{RGB}{110,110,110}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  commentstyle=\itshape\color{softgray},
+  keywordstyle=\bfseries,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{softgray!50},
+  columns=fullflexible,
+  showstringspaces=false,
+  aboveskip=6pt, belowskip=6pt,
+}
+
+\pgfplotsset{
+  compat=1.18,
+  myaxis/.style={
+    width=12cm, height=6.6cm,
+    tick align=outside,
+    axis line style={gray!60},
+    tick style={gray!60},
+    label style={font=\small},
+    title style={font=\small\bfseries},
+    every axis plot/.append style={line width=0.9pt},
+    legend style={draw=none,font=\small,fill=none},
+    grid=none,
+  }
+}
+
+\newcommand{\SN}{\mathrm{SN}}
+\newcommand{\FAR}{\mathrm{FAR}}
+\newcommand{\ARL}{\mathrm{ARL}}
+\newcommand{\MRL}{\mathrm{MRL}}
+\newcommand{\FARz}{\FAR_0}
+
+% ------------------------------------------------------------------ %
+%  Данные графиков и таблиц (точные значения, перебор/бином)          %
+% ------------------------------------------------------------------ %
+\def\snpmfnTen{(-10,0.0009766) (-8,0.0097656) (-6,0.0439453) (-4,0.1171875) (-2,0.2050781) (0,0.2460938) (2,0.2050781) (4,0.1171875) (6,0.0439453) (8,0.0097656) (10,0.0009766)}
+\def\sntailTN{(1,0.3769531) (2,0.3769531) (3,0.1718750) (4,0.1718750) (5,0.0546875) (6,0.0546875) (7,0.0107422) (8,0.0107422) (9,0.0009766) (10,0.0009766)}
+\def\sntailTW{(1,0.4119015) (2,0.4119015) (3,0.2517223) (4,0.2517223) (5,0.1315880) (6,0.1315880) (7,0.0576591) (8,0.0576591) (9,0.0206947) (10,0.0206947) (11,0.0059090) (12,0.0059090) (13,0.0012884) (14,0.0012884) (15,0.0002012) (16,0.0002012) (17,0.0000200) (18,0.0000200) (19,0.0000010) (20,0.0000010)}
+\def\sntailTH{(1,0.4277678) (2,0.4277678) (3,0.2923324) (4,0.2923324) (5,0.1807973) (6,0.1807973) (7,0.1002442) (8,0.1002442) (9,0.0493686) (10,0.0493686) (11,0.0213870) (12,0.0213870) (13,0.0080624) (14,0.0080624) (15,0.0026114) (16,0.0026114) (17,0.0007155) (18,0.0007155) (19,0.0001625) (20,0.0001625) (21,0.0000297) (22,0.0000297) (23,0.0000042) (24,0.0000042) (25,0.0000004) (26,0.0000004)}
+\def\sntailmarks{(10,0.0009766) (14,0.0012884) (18,0.0006563)}
+\def\snA{(1,1) (2,2) (3,3) (4,4) (5,5) (6,6) (7,7) (8,8) (9,9) (10,10) (11,11) (12,12) (13,13) (14,12) (15,13) (16,14) (17,13) (18,14) (19,15) (20,14) (21,15) (22,16) (23,15) (24,16) (25,17) (26,16) (27,17) (28,18) (29,17) (30,18) (31,19) (32,18) (33,19) (34,20) (35,19) (36,20) (37,19) (38,20) (39,21) (40,20)}
+\def\snFAR{(1,1.0000000) (2,0.5000000) (3,0.2500000) (4,0.1250000) (5,0.0625000) (6,0.0312500) (7,0.0156250) (8,0.0078125) (9,0.0039062) (10,0.0019531) (11,0.0009766) (12,0.0004883) (13,0.0002441) (14,0.0018311) (15,0.0009766) (16,0.0005188) (17,0.0023499) (18,0.0013123) (19,0.0007286) (20,0.0025768) (21,0.0014896) (22,0.0008554) (23,0.0025995) (24,0.0015439) (25,0.0009105) (26,0.0024939) (27,0.0015137) (28,0.0009122) (29,0.0023157) (30,0.0014309) (31,0.0008779) (32,0.0021024) (33,0.0013187) (34,0.0008214) (35,0.0018782) (36,0.0011932) (37,0.0025632) (38,0.0016581) (39,0.0010650) (40,0.0022214)}
+\def\snTable{%
+1 & 1 & 0.500000 & 1.000000 & 1.0\\
+2 & 2 & 0.250000 & 0.500000 & 2.0\\
+3 & 3 & 0.125000 & 0.250000 & 4.0\\
+4 & 4 & 0.062500 & 0.125000 & 8.0\\
+5 & 5 & 0.031250 & 0.062500 & 16.0\\
+6 & 6 & 0.015625 & 0.031250 & 32.0\\
+7 & 7 & 0.007812 & 0.015625 & 64.0\\
+8 & 8 & 0.003906 & 0.007812 & 128.0\\
+9 & 9 & 0.001953 & 0.003906 & 256.0\\
+10 & 10 & 0.000977 & 0.001953 & 512.0\\
+11 & 11 & 0.000488 & 0.000977 & 1024.0\\
+12 & 12 & 0.000244 & 0.000488 & 2048.0\\
+13 & 13 & 0.000122 & 0.000244 & 4096.0\\
+14 & 12 & 0.000916 & 0.001831 & 546.1\\
+15 & 13 & 0.000488 & 0.000977 & 1024.0\\
+16 & 14 & 0.000259 & 0.000519 & 1927.5\\
+17 & 13 & 0.001175 & 0.002350 & 425.6\\
+18 & 14 & 0.000656 & 0.001312 & 762.0\\
+19 & 15 & 0.000364 & 0.000729 & 1372.5\\
+20 & 14 & 0.001288 & 0.002577 & 388.1\\}
+
+\title{\textbf{Знаковая карта Шухарта (Shewhart-SN)}\\[2pt]
+\large Теория и расчёт контрольных границ}
+\author{Проект \texttt{nonparametric-charts}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Документ описывает знаковую карту Шухарта в случае известной целевой
+медианы (Case~K): статистику $\SN_i$, её распределение, правило выбора
+контрольной константы $a$, характеристики длины серии (FAR, ARL, MRL) и
+численные примеры. Все формулы и правила сверены с первоисточником:
+Chakraborti \& Graham (2019), \S\,4.2.1.1, стр.~189--196. Документ
+сопровождается минималистичными графиками (pgfplots) и кодом реализации.
+\end{abstract}
+
+\tableofcontents
+\bigskip
+
+% ================================================================== %
+\section{Назначение и источник}
+% ================================================================== %
+
+Знаковая карта (Shewhart-SN) --- непараметрическая контрольная карта для
+контроля центра процесса (медианы). Она не требует предположений о виде
+распределения: достаточно, чтобы наблюдения были независимы и имели
+\emph{непрерывное} распределение. Карта особенно полезна в ситуациях
+коротких серий и на старте процесса, когда данных для оценивания
+параметрических характеристик недостаточно.
+
+Первоисточник: Chakraborti, S. \& Graham, M.\,A. (2019).
+\textit{Nonparametric Statistical Process Control}. Wiley.
+\S\,4.2.1.1 <<Shewhart Control Charts Based on Signs>>, стр.~189--196.
+Расчёт константы $a$ --- стр.~191--192 (Note~4.1).
+
+% ================================================================== %
+\section{Постановка задачи (Case K)}
+% ================================================================== %
+
+Из процесса берутся последовательные подгруппы
+$X_{i1},X_{i2},\dots,X_{in}$, $i=1,2,\dots$, $n\ge 1$ --- независимые
+наблюдения из неизвестного \emph{непрерывного} распределения. Целевое
+значение $\mu_0$ известно или задано (Case~K); обычно это медиана, а при
+симметричном распределении --- и среднее. Каждое наблюдение сравнивается
+с $\mu_0$, и для подгруппы фиксируется число наблюдений выше и ниже
+$\mu_0$.
+
+% ================================================================== %
+\section{Знаковая статистика}
+% ================================================================== %
+
+Пусть $n_i^{+}$ и $n_i^{-}$ --- число наблюдений в $i$-й подгруппе,
+больших и меньших $\mu_0$ соответственно. Знаковая статистика
+(Chakraborti \& Graham, 2019, ур.~(4.1)--(4.2), стр.~189--190):
+\begin{equation}
+\SN_i \;=\; \sum_{j=1}^{n}\phi(X_{ij}-\mu_0)
+       \;=\; n_i^{+}-n_i^{-}
+       \;=\; 2T_i-n,
+\label{eq:sn}
+\end{equation}
+где
+\begin{equation}
+\phi(t)=
+\begin{cases}
+ +1, & t>0,\\
+  0, & t=0,\\
+ -1, & t<0,
+\end{cases}
+\qquad
+T_i=\sum_{j=1}^{n}\Psi(X_{ij}-\mu_0)=n_i^{+},
+\quad
+\Psi(A)=\begin{cases}1,&A>0\\0,&A\le 0.\end{cases}
+\end{equation}
+Здесь $T_i$ --- классическая знаковая статистика (число <<плюсов>>),
+которая в состоянии IC имеет биномиальное распределение
+$T_i\sim\mathrm{Bin}(n,\tfrac12)$. Поэтому
+$\SN_i=2T_i-n$ принимает значения $-n,-n+2,\dots,n$ \emph{той же
+чётности, что и $n$}, и
+\begin{equation}
+\Pr(\SN_i=\mathrm{sn}) = \binom{n}{\tfrac{n+\mathrm{sn}}{2}}\left(\frac12\right)^{\!n},
+\qquad \mathrm{sn}\in\{-n,\dots,n\}.
+\label{eq:snpmf}
+\end{equation}
+
+\paragraph{Моменты.} Из свойств $T_i$ (Chakraborti \& Graham, 2019,
+табл.~4.1, стр.~193) в IC при $p=\Pr(X_{ij}>\mu_0)=\tfrac12$:
+\begin{equation}
+\mathbb{E}[\SN_i]=n(2p-1)=0,
+\qquad
+\operatorname{SD}(\SN_i)=2\sqrt{np(1-p)}=\sqrt{n}.
+\label{eq:snmoments}
+\end{equation}
+Именно распределение $\SN_i$ целиком (а не только его СКО) определяет
+границы. Как показано ниже, $a$ выбирается из условий на вероятности
+ложной тревоги и \emph{не} равно $3\operatorname{SD}(\SN_i)=3\sqrt{n}$.
+
+% ================================================================== %
+\section{Контрольные границы и правило сигнала}
+% ================================================================== %
+
+Двусторонние границы и центральная линия
+(Chakraborti \& Graham, 2019, ур.~(4.3), стр.~190):
+\begin{equation}
+\mathrm{UCL}=a,\qquad \mathrm{CL}=0,\qquad \mathrm{LCL}=-a,
+\qquad 0<a\le n .
+\label{eq:snlimits}
+\end{equation}
+Карта подаёт сигнал (процесс считается вышедшим из-под контроля), если
+$|\SN_i|\ge a$, т.е. если $\SN_i\ge a$ или $\SN_i\le -a$. Пока
+$-a<\SN_i<a$, процесс считается находящимся в контроле на уровне
+$\mu_0$.
+
+% ================================================================== %
+\section{Расчёт константы $a$}
+% ================================================================== %
+
+\paragraph{Правило (книга, стр.~191).}
+Константа $a$ --- это \emph{наименьшее} целое $0<a\le n$ такое, что
+\begin{equation}
+\Pr_{\mu_0\mid IC}(\SN_i\ge a)\;\le\;\frac{\FARz}{2}.
+\label{eq:snrule}
+\end{equation}
+Распределение $\SN_i$ дискретно, поэтому равенство, как правило, не
+достигается; используется \emph{консервативный} подход: достигнутый FAR
+не превышает номинального $\FARz$. При типичном номинальном значении
+\begin{equation}
+\FARz = 0.0027 \quad\Longrightarrow\quad \frac{\FARz}{2}=0.00135 .
+\label{eq:snfar0}
+\end{equation}
+
+\paragraph{Формула хвоста.}
+Из $\SN_i=2T_i-n$ условие $\SN_i\ge a$ равносильно
+$T_i\ge\lceil (n+a)/2\rceil$, откуда
+\begin{equation}
+\Pr_{\mu_0\mid IC}(\SN_i\ge a)
+=\sum_{m=\lceil (n+a)/2\rceil}^{n}\binom{n}{m}\left(\frac12\right)^{\!n}.
+\label{eq:sntail}
+\end{equation}
+Это ровно <<правосторонний хвост>> биномиальной таблицы (Appendix~A,
+Table~A), как указано в Note~4.1 (стр.~191).
+
+\paragraph{Реализуемые значения.}
+Так как $\SN_i\equiv n\pmod 2$, среди целых $a$ условию может
+удовлетворить только значение \emph{той же чётности, что и $n$}.
+Поэтому перебор идёт с шагом~2 от $a=1$ (при нечётном $n$) или $a=2$
+(при чётном $n$).
+
+\paragraph{Малое $n$ (fallback).}
+Если при данном $n$ целевая вероятность $0.00135$ \emph{недостижима}
+(так бывает при малых $n$), берётся максимально возможное $a=n$ ---
+самые широкие границы и наименьший достижимый FAR. Так книга поступает
+для $n=1$ ($a=1$, $\FAR=1$, стр.~190) и для $n=4$ у знако-ранговой карты
+(пример~4.4).
+
+% ================================================================== %
+\section{Характеристики длины серии: FAR, ARL, MRL}
+% ================================================================== %
+
+Двусторонняя карта имеет две хвостовые области, поэтому достигнутый
+уровень ложной тревоги вдвое больше одностороннего:
+\begin{equation}
+\FAR=\Pr\bigl(|\SN_i|\ge a\bigr)
+    =\Pr(\SN_i\ge a)+\Pr(\SN_i\le -a)
+    = 2\,\Pr(\SN_i\ge a),
+\label{eq:snfar}
+\end{equation}
+где последнее равенство --- следствие симметрии распределения $\SN_i$.
+Длина серии в Case~K имеет геометрическое распределение
+$N\sim\mathrm{GEO}(\FAR)$, поэтому
+\begin{equation}
+\ARL_{IC}=\frac{1}{\FAR},
+\qquad
+\MRL_{IC}=\left\lceil\frac{\ln 0.5}{\ln(1-\FAR)}\right\rceil .
+\label{eq:snarl}
+\end{equation}
+
+% ================================================================== %
+\section{Примеры по книге}
+% ================================================================== %
+
+\paragraph{Пример ($n=5$, стр.~191).}
+Наименьшая достижимая правосторонняя вероятность при $n=5$ равна
+$0.03125$ (правосторонний вход $5$ таблицы~A). Она \emph{больше}
+$0.00135$, поэтому берётся максимум: $a=2\cdot 5-5=5$ и
+$\FAR=2\cdot0.03125=0.0625$, $\ARL_{IC}=16$. Это наименьший достижимый
+FAR при $n=5$; он далёк от типичного $370$.
+
+\paragraph{Пример ($n=20$, стр.~192).}
+Правосторонний вход $17$ даёт $0.001288\le 0.00135$, поэтому
+$a=2\cdot17-20=14$, $\FAR=2\cdot0.001288=0.002576$ и
+$\ARL_{IC}\approx 388$ --- близко к желаемому $370$.
+
+\paragraph{Пример 4.2 ($n=10$, стр.~222--224).}
+$\Pr(\SN\ge 10)=1/1024=0.000977\le 0.00135$, откуда $a=10$,
+$\FAR=2/1024=0.001953$, $\ARL_{IC}=512$. Книга печатает
+$\FAR=0.001994$ и $\ARL_{IC}\approx 502$; точный расчёт даёт
+$0.001953$ и $512$ (в книге опечатка). Ни одна точка не выходит на
+границы --- процесс в контроле.
+
+\paragraph{Пример 4.1 ($n=1$, стр.~219--221).}
+При $n=1$ статистика принимает лишь $\pm1$, наименьший правосторонний
+хвост равен $0.5$, поэтому $a=1$, $\FAR=1$, $\ARL_{IC}=1$. Пример
+иллюстрирует непригодность знаковой карты по индивидуальным наблюдениям:
+каждая точка оказывается на границе.
+
+\begin{table}[htbp]\centering
+\caption{Контрольная константа $a$ и характеристики для $n=1..20$
+(консервативный подход, $\FARz=0.0027$). Точный расчёт.}
+\label{tab:sntable}
+\begin{tabular}{rrrrr}
+\toprule
+$n$ & $a$ & $\Pr(\SN\ge a)$ & $\FAR$ & $\ARL_{IC}$\\
+\midrule
+\snTable
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ================================================================== %
+\section{Графики}
+% ================================================================== %
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[myaxis,
+  xlabel={значение $\SN$ при $n=10$},
+  ylabel={вероятность},
+  xtick={-10,-8,...,10}, ymin=0, ymax=0.30,
+  legend pos=north west,
+  title={Распределение $\SN$ в состоянии IC ($n=10$)}]
+\addplot+[ycomb,mark=*,mark size=2.0pt,color=accent] coordinates {\snpmfnTen};
+\addlegendentry{$\Pr(\SN=\mathrm{sn})$}
+\draw[dashed,alert,line width=1pt] (axis cs:-10,0) -- (axis cs:-10,0.30);
+\draw[dashed,alert,line width=1pt] (axis cs:10,0) -- (axis cs:10,0.30);
+\end{axis}
+\end{tikzpicture}
+\caption{Точечная вероятность $\SN$ при $n=10$ (ур.~\eqref{eq:snpmf}).
+Границы $a=10$ отмечены пунктиром: хвост $\Pr(\SN\ge 10)=1/1024$.}
+\label{fig:snpmf}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[myaxis,
+  xlabel={$a$}, ylabel={$\Pr(\SN\ge a)$},
+  ymode=log, log basis y=10,
+  xmin=0, xmax=32, ymin=1e-7, ymax=1.2,
+  legend pos=north east,
+  title={Односторонний хвост $\Pr(\SN\ge a)$}]
+\addplot+[mark=o,mark size=1.6pt,color=accent] coordinates {\sntailTN};
+\addlegendentry{$n=10$}
+\addplot+[mark=square,mark size=1.6pt,color=accent!70!black] coordinates {\sntailTW};
+\addlegendentry{$n=20$}
+\addplot+[mark=triangle,mark size=1.8pt,color=accent!45!black] coordinates {\sntailTH};
+\addlegendentry{$n=30$}
+\addplot[dashed,black,line width=1pt,domain=0:32] {0.00135};
+\addlegendentry{$\FARz/2=0.00135$}
+\addplot[only marks,mark=*,mark size=3.2pt,color=alert] coordinates {\sntailmarks};
+\addlegendentry{выбранное $a$}
+\end{axis}
+\end{tikzpicture}
+\caption{Односторонний хвост (ур.~\eqref{eq:sntail}) и порог
+$\FARz/2=0.00135$. Выбранная константа $a$ --- наименьшее достижимое
+значение, при котором кривая опускается под порог.}
+\label{fig:sntail}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[myaxis,height=5.6cm,
+  xlabel={$n$}, ylabel={константа $a$},
+  xmin=0, xmax=41, ymin=0, ymax=22,
+  title={Константа $a(n)$}]
+\addplot+[mark=*,mark size=1.4pt,color=accent] coordinates {\snA};
+\end{axis}
+\end{tikzpicture}
+
+\medskip
+\begin{tikzpicture}
+\begin{axis}[myaxis,height=5.6cm,
+  xlabel={$n$}, ylabel={достигнутый $\FAR$},
+  xmin=0, xmax=41, ymode=log, log basis y=10,
+  ymin=1e-4, ymax=2,
+  title={Достигнутый $\FAR(n)$}]
+\addplot+[mark=*,mark size=1.4pt,color=alert] coordinates {\snFAR};
+\addplot[dashed,black,line width=1pt,domain=0:41] {0.0027};
+\end{axis}
+\end{tikzpicture}
+\caption{Сверху: константа $a(n)$; снизу: достигнутый $\FAR(n)$ и
+номинальный $\FARz=0.0027$ (пунктир). Видны ``пилообразные'' скачки
+из-за дискретности и требования чётности $a\equiv n\ (\mathrm{mod}\ 2)$.}
+\label{fig:snn}
+\end{figure}
+
+% ================================================================== %
+\section{Реализация (код)}
+% ================================================================== %
+
+Ниже --- ключевые функции из \texttt{src/charts/sign\_chart.py}
+(идентификаторы совпадают с исходником; комментарии --- пояснительные).
+
+\begin{lstlisting}
+# P(SN >= a):  SN = 2T - n,  T ~ Bin(n, 1/2)
+# SN >= a   <=>   T >= ceil((n + a) / 2)
+def _p_sn_ge_a(n, a):
+    t = ceil((n + a) / 2)
+    return sum(comb(n, m) for m in range(t, n + 1)) / 2**n
+
+# Conservative charting constant a  (book, p. 191)
+def _calc_a_conservative(n, far0=0.0027):
+    target = far0 / 2                 # = 0.00135
+    start = 1 if n % 2 else 2         # a must have parity of n
+    for a in range(start, n + 1, 2):
+        if _p_sn_ge_a(n, a) <= target:
+            return a, 2 * _p_sn_ge_a(n, a)   # (a, FAR)
+    return n, 2 * _p_sn_ge_a(n, n)           # fallback: widest limits
+\end{lstlisting}
+
+Класс \texttt{SignChart} также предоставляет \texttt{calculate\_limits()},
+\texttt{compare\_approaches()} (консервативный / <<ближайший к $\alpha$>> /
+симметричный), \texttt{get\_sn\_table()}, \texttt{get\_sign\_matrix()},
+\texttt{calculate\_sign\_test()}, \texttt{plot()} и
+\texttt{plot\_comparison()}.
+
+% ================================================================== %
+\section{Замечание о зонах <<$\sigma$>>}
+% ================================================================== %
+
+На графиках карты зоны подписываются в единицах $\sigma$ по правилу
+$\sigma=a/3$ (раскладка в духе западного электрического стандарта).
+Это \emph{соглашение о разметке}, а не истинное стандартное отклонение:
+как следует из ур.~\eqref{eq:snmoments},
+$\operatorname{SD}(\SN_i)=\sqrt{n}$, тогда как $a$ находится из условия
+на FAR, поэтому, вообще говоря, $a\ne 3\operatorname{SD}(\SN_i)=3\sqrt{n}$.
+Например, при $n=20$ имеем $a=14$ и $3\sqrt{n}\approx 13.4$ --- близко,
+но совпадение случайно; при $n=10$ $a=10$, а $3\sqrt{n}\approx 9.5$.
+Подробнее --- ADR-011 в \texttt{.opencode/memory/architecture-decisions.md}.
+
+% ================================================================== %
+\section{Итоги}
+% ================================================================== %
+
+\begin{itemize}
+\item Статистика: $\SN_i=n_i^{+}-n_i^{-}=2T_i-n$, $T_i\sim\mathrm{Bin}(n,\tfrac12)$.
+\item Границы: $\mathrm{UCL}=a$, $\mathrm{CL}=0$, $\mathrm{LCL}=-a$; сигнал при $|\SN_i|\ge a$.
+\item Константа: наименьшее достижимое $a$ той же чётности, что $n$,
+      с $\Pr(\SN\ge a)\le\FARz/2=0.00135$; иначе $a=n$.
+\item Достигнутый $\FAR=2\Pr(\SN\ge a)$, $\ARL_{IC}=1/\FAR$.
+\item $a$ --- вероятностный квантиль, а \emph{не} кратно $\sqrt{n}$.
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{chakraborti2019}
+S.~Chakraborti, M.\,A.~Graham.
+\textit{Nonparametric Statistical Process Control}.
+Wiley, 2019. \S\,4.2.1.1, стр.~189--196 (расчёт $a$: стр.~191--192).
+\end{thebibliography}
+
+\end{document}

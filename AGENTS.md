@@ -1,36 +1,67 @@
 # AGENTS.md
 
-"ShCC" — Python library for Shewhart (control) chart analysis of multivariate data.
-Code, comments, docstrings, and chart labels are **in Russian** — keep them that way.
-Research repo: no git, no CI, no README; `poetry.lock` is generated but gitignored.
+"nonparametric-charts" — Python-библиотека непараметрических (distribution-free) контрольных карт
+Шухарта по **одномерным** (univariate) данным процесса: знаковая карта (`SignChart`)
+и знаково-ранговая карта (`SignedRankChart`). Параметрические карты (`XBar`, `R`,
+`S`, `Median`) живут в соседнем репозитории `../parametric-charts` — здесь их нет.
+Код, комментарии, докстринги и подписи на графиках — **на русском**, так и
+оставлять. Исследовательский репозиторий: `poetry.lock` генерируется и игнорируется.
 
-## Layout and imports
+> Этот файл — **только указатели и жёсткие правила**. Всё, что длиннее трёх строк,
+> живёт в `.opencode/rules/`, `.opencode/memory/`, `.opencode/skills/`,
+> `.opencode/templates/`. Не раздувать этот файл.
 
-- Source lives in three top-level subpackages under `src/` (there is **no** `src/ShCC/`, no `src/__init__.py`):
-  - `src/base/base_chart.py` — abstract `BaseControlChart` (control limits, Western-Electric zones, plot helpers)
-  - `src/charts/` — `XBarChart`, `RChart`, `SChart`, `MedianChart`, `SignChart`, `SignedRankChart` (all extend `BaseControlChart`)
-  - `src/utils/` — `DataLoader`, `DataPreprocessor`, `DataPipeline`, `plotting`, `coefficients.json`
-- All modules use absolute `from src.{base,charts,utils}.` imports. Run everything **from the repo root** with the root on `sys.path` — it is not an installed package. `config/`, `.env` are empty placeholders.
+## Жёсткие правила (не нарушать)
 
-## Poetry environment
+1. **Первоисточник — книга Чакраборти.** Любая формула, константа, правило сигнала
+   или трактовка метода сначала сверяется с
+   `docs/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`
+   (Chakraborti & Graham, *Nonparametric Statistical Process Control*, Wiley, 2019).
+   В коде, докстрингах и ноутбуках указывать **раздел и печатную страницу**.
+   Если в книге неясно — идти в указанный там первоисточник/статью и ссылаться на
+   него. Вторичный русский источник: `docs/Klyachkin_...pdf` (В. Н. Клячкин).
+   → `rules/sources.md`, навык `book-lookup`.
+2. **Графики — минималистичный LaTeX.** Единый стиль через
+   `src/utils/plot_style.py::apply_minimal_latex_style()`.
+   → `rules/plot-style.md`.
+3. **Ноутбук = теория → код → разбор кода → логика → формулы → графики.** Формулы
+   давать и в LaTeX-разметке, **и** в виде кода. → `rules/notebook-style.md`,
+   навык `notebook-build`, шаблон `templates/notebook-structure.md`.
+4. **После каждой задачи** (без отдельного запроса) обновить `.opencode/memory/` и
+   предложить шаги по улучшению процесса/снижению токенов. → `/wrap-up`.
+5. **Язык общения и оформление кода** — `rules/profile.md`.
 
-Poetry manages deps (`pyproject.toml`, `[tool.poetry] package-mode = false` — no `ShCC` package, no `shukart-*` scripts, no `import ShCC`). Setup: `poetry install --with dev`, activate with `poetry env activate`. Jupyter kernel for notebooks: `shcc-py` (`poetry run python -m ipykernel install --user --name shcc-py`). Tests live in `tests/` (see `tests/xbar/` for a worked book example).
+## Навигация
 
-## Coefficients file
+| Что | Где |
+| --- | --- |
+| Технический референс проекта | `.opencode/rules/reference.md` |
+| Стиль графиков | `.opencode/rules/plot-style.md` |
+| Структура ноутбука | `.opencode/rules/notebook-style.md` |
+| Правило первоисточников | `.opencode/rules/sources.md` |
+| Профиль общения | `.opencode/rules/profile.md` |
+| Архитектурные решения (ADR) | `.opencode/memory/architecture-decisions.md` |
+| Карта книги Чакраборти | `.opencode/memory/book-map.md` |
+| Журнал задач | `.opencode/memory/tasks-completed.md` |
+| Навыки | `.opencode/skills/` (`book-lookup`, `notebook-build`, `style-check`) |
+| Шаблоны | `.opencode/templates/` |
+| Сабагенты | `.opencode/agents/` (`book-checker`, `notebook-writer`) |
 
-`BaseControlChart._load_coefficients` searches paths that do **not** include the real `src/utils/coefficients.json`. Always pass `coefficients_file='src/utils/coefficients.json'` (repo-root-relative) or set `SHCC_COEFFICIENTS`. Notebooks pass `'../src/utils/coefficients.json'`.
+## Ключи по проекту (кратко)
 
-## Data model
-
-- Each row is one subgroup, each column one measurement, so `sample_size` = number of columns (not rows). Sample data: `data/data.csv` (14 columns, n=14).
-- `DataLoader` auto-detects separators/encodings and converts comma decimals.
-- `DataPreprocessor` auto-strips a leading 1..N index column if present.
-
-## Notebooks
-
-`notebooks/*.ipynb` (gitignored) are the working entrypoints. Run them **from inside `notebooks/`** — they `sys.path.append('..')` and reference `../data/data.csv` and `../src/utils/coefficients.json`. Reuse this pattern rather than relocating.
-
-## Environment
-
-- Requires Python >=3.14 (`.python-version`: 3.14.6). Install everything with `poetry install --with dev` (main: pandas>=3, numpy>=2.5, scipy, matplotlib; dev: pytest, black, flake8, isort, mypy, jupyter). Do not pip-install alongside poetry.
-- pytest is configured (`testpaths=["tests"]`, `python_files="test_*.py"`). Add tests in `tests/` (use a per-chart subfolder, e.g. `tests/xbar/`) when changing logic.
+- Дерево: `src/base/base_chart.py` (`BaseControlChart`), `src/charts/*`
+  (`SignChart`, `SignedRankChart`, ...), `src/utils/*` (`DataLoader`,
+  `DataPreprocessor`, `plotting`, `plot_style`).
+- Импорты абсолютные: `from src.{base,charts,utils}. import ...`. Запуск из корня
+  репозитория.
+- Коэффициенты: `src/utils/coefficients.json` находится автоматически
+  (в ноутбуках при необходимости — `'../src/utils/coefficients.json'`) либо
+  `NONPARAMETRIC_CHARTS_COEFFICIENTS`. Содержит константы **параметрических** карт; сами
+  непараметрические карты их не используют.
+- Данные: строка = подгруппа, столбец = измерение, `sample_size` = число столбцов.
+- Окружение: Python >= 3.14, `poetry install --with dev`, kernel `nonparametric-charts-py`,
+  ноутбуки запускать из `notebooks/`.
+- Тесты — по примерам книги (один файл = один пример): `tests/sign/`
+  (примеры 4.1–4.3), `tests/signed_rank/` (примеры 4.4–4.5), плюс
+  `tests/test_control_constant_selection.py` (правило выбора `a`).
+  Построенные в тестах карты сохраняются в `results/tests/` с номером примера.

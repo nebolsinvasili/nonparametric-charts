@@ -23,11 +23,11 @@ def add_zones(ax, cl: float, ucl: float, lcl: float):
     
     zone_width = (ucl - cl) / 3
     
-    ax.axhspan(cl + 2*zone_width, ucl, alpha=0.1, color='yellow', label='Зона A')
+    ax.axhspan(cl + 2*zone_width, ucl, alpha=0.1, color='yellow', label='Зона A (2σ…3σ)')
     ax.axhspan(lcl, cl - 2*zone_width, alpha=0.1, color='yellow')
-    ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.1, color='orange', label='Зона B')
+    ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.1, color='orange', label='Зона B (1σ…2σ)')
     ax.axhspan(cl - 2*zone_width, cl - zone_width, alpha=0.1, color='orange')
-    ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.1, color='lightgreen', label='Зона C')
+    ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.1, color='lightgreen', label='Зона C (0…1σ)')
 
 
 def add_values_on_points(ax, x_values: np.ndarray, y_values: np.ndarray,

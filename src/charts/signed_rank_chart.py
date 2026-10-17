@@ -34,12 +34,13 @@
 Три подхода к расчёту константы a:
 ----------------------------------
 1. **Консервативный** (по книге, стр. 198):
-       a = наименьшее целое с P(SR ≥ a) ≤ FAR₀/2
+       a — наименьшее достижимое (той же чётности, что и S)
+       с P(SR ≥ a) ≤ FAR₀/2; при недостижимости a = S.
 2. **«Ближайший»** (обучение / сравнение):
        a = argmin_a |P(|SR| ≥ a) − α|
 3. **Симметричный квантильный**:
-       a — наименьшее целое, сохраняющее симметрию контрольных границ;
-       для нечётного числа возможных значений SR — нечётное a.
+       a — наименьшее достижимое, сохраняющее чётность S
+       (симметрия границ ±a); для чётного S совпадает с консервативным.
 """
 
 from __future__ import annotations
@@ -262,22 +263,20 @@ class SignedRankChart(BaseControlChart):
                              dist_func) -> Tuple[int, float]:
         """
         Подход 1: консервативный (книга, стр. 198).
-        a — наименьшее целое с P(SR ≥ a) ≤ FAR₀/2.
 
-        Перебираем a в диапазоне [1, S], где S = n(n+1)/2.
+        a — наименьшее *достижимое* значение SR (той же чётности, что и
+        S = n(n+1)/2) с P(SR ≥ a) ≤ FAR₀/2. Если вероятность недостижима
+        (малое n), берётся максимум a = S — самые широкие границы и
+        наименьший достижимый FAR (книга, пример 4.4: n = 4, a = S = 10).
         """
         S = n * (n + 1) // 2
         target = far0 / 2
-        # Идём от S вниз, чтобы найти наименьшее a, удовлетворяющее условию
-        best_a = 1
-        best_p = 1.0
-        for a in range(1, S + 1):
+        start = 1 if S % 2 == 1 else 2
+        for a in range(start, S + 1, 2):
             p = dist_func(n, a)
             if p <= target:
-                best_a = a
-                best_p = 2.0 * p  # двусторонний FAR
-                break
-        return best_a, best_p
+                return a, 2.0 * p
+        return S, 2.0 * dist_func(n, S)
 
     @classmethod
     def _calc_a_nearest(cls, n: int, alpha: float,
@@ -299,19 +298,18 @@ class SignedRankChart(BaseControlChart):
         Подход 3: симметричный квантильный.
 
         S = n(n+1)/2. Возможные значения SR имеют чётность, равную
-        чётности S. Поэтому для сохранения симметрии контрольных
-        границ берём a той же чётности, что и S.
+        чётности S, поэтому для сохранения симметрии границ ±a берём a
+        той же чётности, что и S (наименьшее достижимое с
+        P(SR ≥ a) ≤ FAR₀/2). При недостижимости — a = S.
         """
         S = n * (n + 1) // 2
         target = far0 / 2
-        # Начинаем с S (или S−1, чтобы совпасть по чётности)
-        start = S if (S % 2 == 0) else S - 1
-        step = 2
-        for a in range(start, 0, -step):
+        start = 1 if S % 2 == 1 else 2
+        for a in range(start, S + 1, 2):
             p = dist_func(n, a)
             if p <= target:
                 return a, 2.0 * p
-        return 1, 2.0 * dist_func(n, 1)
+        return S, 2.0 * dist_func(n, S)
 
     def _calculate_c_value(self) -> int:
         """Расчёт a согласно выбранному подходу."""
@@ -446,7 +444,11 @@ class SignedRankChart(BaseControlChart):
         fill_zones: bool = False,
         value_offset: Tuple[float, float] = (0, 0.6),
     ) -> Tuple[plt.Figure, plt.Axes]:
-        """Построение знако-ранговой карты Шухарта."""
+        """Построение знако-ранговой карты Шухарта.
+
+        Зоны Вестерн-Электрик (σ = a/3 — контрольная граница a соответствует 3σ):
+        Зона A — 2σ…3σ (внешняя), Зона B — 1σ…2σ (средняя), Зона C — 0…1σ (внутренняя).
+        """
         if self.control_limits is None:
             self.calculate_limits()
 
@@ -475,15 +477,15 @@ class SignedRankChart(BaseControlChart):
                     linestyle=':', linewidth=1.0, alpha=0.8, zorder=1,
                 )
             x_right = x.max() + 0.4
-            ax.text(x_right, (z2 + a) / 2, 'Zone A', color=zone_colors['A'],
+            ax.text(x_right, (z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, (z1 + z2) / 2, 'Zone B', color='darkgoldenrod',
+            ax.text(x_right, (z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, 0, 'Zone C', color=zone_colors['C'],
+            ax.text(x_right, 0.5 * z1, 'Зона C (0…1σ)', color=zone_colors['C'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z1 + z2) / 2, 'Zone B', color='darkgoldenrod',
+            ax.text(x_right, -(z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
                     fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z2 + a) / 2, 'Zone A', color=zone_colors['A'],
+            ax.text(x_right, -(z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
                     fontsize=9, va='center', ha='left', fontweight='bold')
 
         is_violation = (y >= a) | (y <= -a)
@@ -521,7 +523,7 @@ class SignedRankChart(BaseControlChart):
         ax.set_xlabel('Номер подгруппы', fontsize=12)
         ax.set_ylabel('SR = Σ sign(X−μ₀)·rank(|X−μ₀|)', fontsize=12)
         ax.set_xticks(x)
-        ax.set_xlim(x.min() - 0.5, x.max() + 1.8)
+        ax.set_xlim(x.min() - 0.5, x.max() + 3.2)
         y_margin = max(2, a * 0.3)
         ax.set_ylim(-(a + y_margin), a + y_margin)
 
@@ -532,12 +534,9 @@ class SignedRankChart(BaseControlChart):
         ax.set_title(title, fontsize=13, fontweight='bold')
 
         info = (
-            f"μ₀ = {self.target_value:.4f}\n"
-            f"n = {self.sample_size},  m = {len(self.subgroups)}\n"
-            f"a = {a}  (max |SR| = {S})\n"
-            f"FAR = {self.control_limits['FAR']:.4f}\n"
-            f"ARL_IC = {self.control_limits['ARL_IC']:.1f}\n"
-            f"MRL_IC = {self.control_limits['MRL_IC']}"
+            f"μ₀ = {self.target_value:.4f}    n = {self.sample_size}, m = {len(self.subgroups)}\n"
+            f"a = {a}   (σ = a/3, max |SR| = {S})\n"
+            f"FAR = {self.control_limits['FAR']:.4f}   ARL = {self.control_limits['ARL_IC']:.1f}   MRL = {self.control_limits['MRL_IC']}"
         )
         ax.text(0.985, 0.98, info, transform=ax.transAxes,
                 fontsize=9, va='top', ha='right',
@@ -548,9 +547,9 @@ class SignedRankChart(BaseControlChart):
         if show_zones and a >= 3:
             zone_handles = [
                 Line2D([0], [0], color=zone_colors['A'], linestyle=':',
-                       linewidth=1.5, label='Zone A (границы)'),
+                       linewidth=1.5, label='Граница зоны A (2σ)'),
                 Line2D([0], [0], color='darkgoldenrod', linestyle=':',
-                       linewidth=1.5, label='Zone B (границы)'),
+                       linewidth=1.5, label='Граница зоны B (1σ)'),
             ]
             handles += zone_handles
             labels += [h.get_label() for h in zone_handles]

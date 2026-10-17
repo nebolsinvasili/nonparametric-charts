@@ -1,7 +1,7 @@
 [project]
-name = "ShCC"
+name = "nonparametric-charts"
 version = "0.1.0"
-description = "Shukart Control Chart analysis for multivariate data"
+description = "Nonparametric (distribution-free) Shewhart control charts for univariate process monitoring"
 authors = [
     {name = "Nebolsin Vasili", email = "nebolsinvasili@gmail.com"}
 ]
@@ -27,9 +27,13 @@ dev = [
     "black (>=26.5.1,<27.0.0)",
     "flake8 (>=7.3.0,<8.0.0)",
     "isort (>=8.0.1,<9.0.0)",
-    "mypy (>=2.3.0,<3.0.0)"
+    "mypy (>=2.3.0,<3.0.0)",
+    "pytest-sugar (>=1.1.1,<2.0.0)"
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
+# Красивый вывод в терминале: pytest-sugar (прогресс-бар, галочки),
+# краткая сводка по пропущенным/упавшим и 10 самых медленных тестов.
+addopts = "-ra --durations=10"

@@ -40,3 +40,9 @@ plots/
 # OS
 .DS_Store
 Thumbs.db
+
+# TeX / LaTeX (сборка отчётов в docs/)
+docs/build/
+*.aux
+*.toc
+*.out
