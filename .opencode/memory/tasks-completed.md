@@ -742,3 +742,22 @@
   `h=14`, `ARL=480.60` (книжные `h=24`/`500.30` не воспроизводятся);
   `pytest -q` → **179 passed**; `npc examples` → **10/10 OK**.
 - Далее: 3b.7 — выбор `k` и совместный дизайн `(k, h)`.
+
+### 2026-10-19 — процессные улучшения: `npc experiment cusum`, кэш ARL, точный SR
+
+- Что сделано:
+  - `npc experiment cusum` — запуск всех `experiments/cusum/NN_*.py`;
+    `experiment_scripts()` и тесты `tests/test_cli.py`;
+  - `cached_arl`, `run_length_cache_info`, `clear_run_length_cache` —
+    `lru_cache` по нормированному распределению и `(k, h, sided)` для сеток
+    3b.7; `design_h` использует кэш;
+  - `signed_rank_step_distribution_exact` — точное OOC-распределение `SR`
+    под сдвигом (квадратура по порядковым статистикам `|X|`, узлы
+    Чебышёва—Лобатто); `method='auto'` — точно при `n ≤ 20`;
+  - опыт `experiments/cusum/02_sr_exact_vs_mc.py` — ошибка, сходимость,
+    время, разброс по seed.
+- Проверка: точный метод при `n=20` — ошибка `~10⁻⁸…10⁻⁹` (2001 узел),
+  время `~0.2 с`; Монте-Карло `10⁵` подгрупп — `~10⁻³`; `pytest -q` →
+  **194 passed**; `npc experiment cusum` — без ошибок; `npc examples` —
+  **10/10 OK**.
+- Далее: 3b.7 — сетка `(k, h)` с кэшем.

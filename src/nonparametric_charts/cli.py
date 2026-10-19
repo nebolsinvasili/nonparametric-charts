@@ -7,8 +7,9 @@
     npc test -q              # с аргументами pytest (передаются как есть)
     npc examples             # проверить все примеры книги (examples/)
     npc examples 4.1 4.4     # только указанные примеры
-    npc experiment           # запустить анализы SN и SR (experiments/)
+    npc experiment           # запустить анализы SN, SR и CUSUM (experiments/)
     npc experiment sn        # только SN
+    npc experiment cusum     # все пронумерованные скрипты experiments/cusum/
     npc experiment --list    # список скриптов экспериментов
 
 Команда ищет корень репозитория рядом с исходниками (src-layout) или вверх от
@@ -74,6 +75,23 @@ def cmd_examples(args: argparse.Namespace) -> int:
     return rc
 
 
+_EXPERIMENT_KINDS = ("sn", "sr", "cusum")
+
+
+def experiment_scripts(root: Path, kind: str) -> List[Path]:
+    """Скрипты эксперимента ``kind`` (в порядке запуска).
+
+    Для ``sn``/``sr`` — исторический ``<kind>_analysis.py``. Для ``cusum`` —
+    все пронумерованные ``NN_*.py``: каждый такой файл самодостаточен.
+    """
+    experiments_dir = root / "experiments"
+    if kind in {"sn", "sr"}:
+        return [experiments_dir / kind / f"{kind}_analysis.py"]
+    if kind == "cusum":
+        return sorted((experiments_dir / "cusum").glob("[0-9][0-9]_*.py"))
+    raise ValueError(f"Неизвестный вид эксперимента: {kind!r}")
+
+
 def cmd_experiment(args: argparse.Namespace) -> int:
     root = _repo_root()
     experiments_dir = root / "experiments"
@@ -83,12 +101,17 @@ def cmd_experiment(args: argparse.Namespace) -> int:
             print(path.relative_to(root))
         return 0
 
-    kinds = ["sn", "sr"] if args.kind == "all" else [args.kind]
+    kinds = list(_EXPERIMENT_KINDS) if args.kind == "all" else [args.kind]
     rc = 0
     for kind in kinds:
-        script = experiments_dir / kind / f"{kind}_analysis.py"
-        print(f">>> {script.relative_to(root)}", flush=True)
-        rc |= _run([sys.executable, str(script)], root)
+        scripts = experiment_scripts(root, kind)
+        if not scripts:
+            print(f"Скрипты эксперимента {kind!r} не найдены", file=sys.stderr)
+            rc = 1
+            continue
+        for script in scripts:
+            print(f">>> {script.relative_to(root)}", flush=True)
+            rc |= _run([sys.executable, str(script)], root)
     return rc
 
 
@@ -116,7 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
         "experiment", help="запустить эксперименты (experiments/)"
     )
     p_exp.add_argument(
-        "kind", nargs="?", default="all", choices=["sn", "sr", "all"],
+        "kind", nargs="?", default="all",
+        choices=["sn", "sr", "cusum", "all"],
         help="какой анализ запустить (по умолчанию all)",
     )
     p_exp.add_argument(

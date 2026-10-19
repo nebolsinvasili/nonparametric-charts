@@ -145,10 +145,14 @@
   «метод → ARL → ошибка к точному»; Сигмунд применим только при дрейфе
   `E[Z] > k` (иначе `inf`), Вальд завышает ARL, так как игнорирует память.
 - [x] **3b.5. OOC и устойчивость.** `sign_step_distribution_shift` (точно) и
-  `signed_rank_step_distribution_shift` (Монте-Карло; при `δ=0` — точное
-  распределение Уилкоксона), `oc_curve` для сетки `δ` и распределений
-  normal/`t`/Laplace/logistic/gamma/uniform; IC-ARL не зависит от `F`
-  (центрирование по медиане), OOC-ARL зависит.
+  `signed_rank_step_distribution_shift`: при `δ=0` — точное распределение
+  Уилкоксона, при `δ≠0` — точная **квадратура по порядковым статистикам
+  `|X|`** для `n ≤ 20` (`method='auto'`) либо Монте-Карло
+  (`signed_rank_step_distribution_exact`, ошибка `~10⁻⁸…10⁻⁹` против
+  `~10⁻³` у Монте-Карло; опыт `experiments/cusum/02_sr_exact_vs_mc.py`).
+  `oc_curve` — сетка `δ` и распределения normal/`t`/Laplace/logistic/gamma/
+  uniform; IC-ARL не зависит от `F` (центрирование по медиане), OOC-ARL
+  зависит.
 - [x] **3b.6. Подбор `h`.** `design_h` + обёртки SN/SR и методы `design_h()`
   у карт; монотонность `ARL(h)` проверена. **Отклонение от плана:** для
   точного решётчатого RL `ARL(h)` — ступенчатая функция, поэтому бисекция/
@@ -158,7 +162,9 @@
   (книжные `h=24`, `ARL=500.30` не воспроизводятся — открытое расхождение).
 - [ ] **3b.7. Выбор `k` и совместный дизайн `(k, h)`.** `k` из целевого сдвига,
   сетка с ограничением `ARL_IC`, критерий `min ARL(δ)`; таблицы для типовых
-  `n`; Amin, Reynolds & Bakir (1995), табл. 5.
+  `n`; Amin, Reynolds & Bakir (1995), табл. 5. Для перебора готова
+  инфраструктура кэша: `cached_arl`, `run_length_cache_info`,
+  `clear_run_length_cache` (`functools.lru_cache`, только ARL, не PMF).
 - [ ] **3b.8. API и интеграция.** `RunLengthResult`, `run_length`/`design` у карт,
   `plot_run_length`, экспорты (частично сделано в 3b.1).
 - [ ] **3b.9. Тесты и производительность.** Инварианты, регрессии на книжные
@@ -196,10 +202,33 @@
   `examples/example_4_10_cusum_sr_markov.py`
 - Ноутбук: `notebooks/cusum_analysis.ipynb` (планируется)
 - Опыты: `experiments/cusum/01_oc_curves.py` — OC-кривые SN/SR по
-  распределениям, график в `results/experiments/cusum_oc_curves.png`
+  распределениям (график `results/experiments/cusum_oc_curves.png`);
+  `experiments/cusum/02_sr_exact_vs_mc.py` — точная квадратура SR против
+  Монте-Карло, сходимость, время (график `cusum_sr_exact_vs_mc.png`)
 - Отчёт: `docs/reports/cusum_verification.tex/.pdf` (планируется)
 
 ## Журнал прогресса
+
+### 2026-10-19 — процессные улучшения: `npc experiment cusum`, кэш ARL, точный SR
+
+- CLI: `npc experiment cusum` запускает все пронумерованные скрипты
+  `experiments/cusum/NN_*.py` (для `sn`/`sr` поведение прежнее); `--list`,
+  `all` и выбор `kind` обновлены; `experiment_scripts()` вынесена отдельно,
+  добавлены тесты `tests/test_cli.py`.
+- Кэш ARL: `cached_arl`, `run_length_cache_info`, `clear_run_length_cache`
+  (`lru_cache`, ключ — нормированное распределение + `(k, h, sided)`); 3b.6
+  и будущая сетка 3b.7 не пересчитывают матрицы.
+- Точный SR под сдвигом: `signed_rank_step_distribution_exact` — квадратура
+  по порядковым статистикам `|X|` (DP по производящему полиному, узлы
+  Чебышёва—Лобатто). `signed_rank_step_distribution_shift` получила
+  `method ∈ {'auto','exact','monte_carlo'}`; `auto` — точно при `n ≤ 20`.
+  Ошибка точного метода `~10⁻⁸…10⁻⁹` при `n=20` (2001 узел), Монте-Карло —
+  `~10⁻³`; время `n=20` — `~0.2 с`, `n=30` — `~0.6 с`.
+- Опыт `experiments/cusum/02_sr_exact_vs_mc.py`: ошибка распределения и ARL,
+  разброс по seed, сходимость квадратуры и время; вывод — точный метод
+  целесообразен для `n ≤ 20`.
+- Проверка: `pytest -q` → **194 passed**; `npc experiment cusum` — оба
+  опыта без ошибок; `npc examples` → **10/10 OK**.
 
 ### 2026-10-19 — этап 3b.4–3b.6 (приближения, OC-кривые, подбор `h`)
 - Сделано: новый модуль `utils/run_length_design.py` — распределения статистики

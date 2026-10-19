@@ -25,13 +25,17 @@ from nonparametric_charts.utils.run_length import (
     signed_rank_step_distribution,
 )
 from nonparametric_charts.utils.run_length_design import (
+    cached_arl,
+    clear_run_length_cache,
     compare_arl_methods,
     design_h,
     design_sign_h,
     design_signed_rank_h,
     oc_curve,
+    run_length_cache_info,
     siegmund_arl,
     sign_step_distribution_shift,
+    signed_rank_step_distribution_exact,
     signed_rank_step_distribution_shift,
     wald_arl,
 )
@@ -74,12 +78,65 @@ def test_signed_rank_shift_ic_is_exact() -> None:
 
 def test_signed_rank_shift_requires_symmetry() -> None:
     """SR — карта для симметричного распределения; несимметричное допустимо,
-    но распределение статистики оценивается по Монте-Карло."""
+    но распределение статистики зависит от F."""
     values, probabilities = signed_rank_step_distribution_shift(
-        4, 1.0, 'gamma', n_sim=5_000, seed=7
+        4, 1.0, 'gamma', method='exact'
     )
     assert probabilities.sum() == pytest.approx(1.0)
     assert values.size > 1
+
+
+def test_signed_rank_exact_is_deterministic() -> None:
+    """Точная квадратура не зависит от seed и повторяется бит-в-бит."""
+    first = signed_rank_step_distribution_exact(6, 1.0, 'normal')
+    second = signed_rank_step_distribution_exact(6, 1.0, 'normal')
+    np.testing.assert_array_equal(first[0], second[0])
+    np.testing.assert_array_equal(first[1], second[1])
+
+
+def test_signed_rank_exact_matches_monte_carlo() -> None:
+    """Точное распределение совпадает с Монте-Карло в пределах шума."""
+    exact_values, exact_probabilities = signed_rank_step_distribution_exact(
+        4, 1.0, 'normal'
+    )
+    mc_values, mc_probabilities = signed_rank_step_distribution_shift(
+        4, 1.0, 'normal', method='monte_carlo',
+        n_sim=100_000, seed=20261019,
+    )
+    exact_full = np.zeros_like(exact_probabilities)
+    mc_full = np.zeros_like(exact_probabilities)
+    exact_index = np.rint(
+        (exact_values + 10.0) / 2.0
+    ).astype(int)
+    mc_index = np.rint((mc_values + 10.0) / 2.0).astype(int)
+    exact_full[exact_index] = exact_probabilities
+    mc_full[mc_index] = mc_probabilities
+    assert np.max(np.abs(exact_full - mc_full)) < 0.01
+
+
+def test_signed_rank_exact_support_and_normalization() -> None:
+    """Носитель — все значения SR, вероятности нормированы."""
+    values, probabilities = signed_rank_step_distribution_exact(
+        5, 0.75, 'laplace'
+    )
+    assert values[0] == -15.0
+    assert values[-1] == 15.0
+    assert np.all(np.diff(values) == 2.0)
+    assert probabilities.sum() == pytest.approx(1.0)
+    assert np.all(probabilities >= 0.0)
+
+
+def test_signed_rank_shift_validates_method() -> None:
+    with pytest.raises(ValueError, match='method'):
+        signed_rank_step_distribution_shift(4, 1.0, method='unknown')
+
+
+def test_signed_rank_auto_uses_exact_for_small_n() -> None:
+    """``method='auto'`` для n = 4 совпадает с точной квадратурой."""
+    auto = signed_rank_step_distribution_shift(4, 1.0, method='auto')
+    exact = signed_rank_step_distribution_exact(4, 1.0)
+    np.testing.assert_array_equal(auto[0], exact[0])
+    np.testing.assert_array_equal(auto[1], exact[1])
 
 
 # --------------------------------------------------------------------------- #
@@ -113,15 +170,29 @@ def test_sign_oc_curve_ic_independent_of_distribution() -> None:
     assert len({round(curve[1], 6) for curve in curves.values()}) > 1
 
 
-def test_signed_rank_oc_curve() -> None:
+def test_signed_rank_oc_curve_exact() -> None:
     """OC-кривая SR: IC — точная ARL, сдвиг уменьшает ARL."""
     curve = oc_curve(
         4, 2, 6, [0.0, 1.0], statistic='SR', sided='upper',
-        n_sim=20_000, seed=20261019,
+        method='exact',
     )
     assert curve.loc[0, 'arl'] == pytest.approx(6.8085106, rel=1e-6)
     assert curve.loc[1, 'arl'] < curve.loc[0, 'arl']
     assert curve.loc[1, 'arl'] >= 1.0
+
+
+def test_signed_rank_oc_curve_monte_carlo_close_to_exact() -> None:
+    """Монте-Карло OC-кривая близка к точной (в пределах шума)."""
+    exact = oc_curve(
+        4, 2, 6, [1.0], statistic='SR', sided='upper', method='exact',
+    )
+    monte_carlo = oc_curve(
+        4, 2, 6, [1.0], statistic='SR', sided='upper',
+        method='monte_carlo', n_sim=50_000, seed=20261019,
+    )
+    assert monte_carlo.loc[0, 'arl'] == pytest.approx(
+        exact.loc[0, 'arl'], rel=0.05
+    )
 
 
 def test_oc_curve_rejects_unknown_statistic() -> None:
@@ -288,3 +359,47 @@ def test_design_result_arl_matches_engine() -> None:
         *sign_step_distribution(10), 6, result.h, sided='two'
     )
     assert result.arl == pytest.approx(direct.arl, rel=1e-12)
+
+
+# --------------------------------------------------------------------------- #
+#  Кэш ARL для сеток дизайна
+# --------------------------------------------------------------------------- #
+
+def test_cached_arl_hits_on_repeated_call() -> None:
+    clear_run_length_cache()
+    values, probabilities = sign_step_distribution(10)
+    first = cached_arl(values, probabilities, 6, 4, sided='two')
+    second = cached_arl(values, probabilities, 6, 4, sided='two')
+    assert first == second
+    info = run_length_cache_info()
+    assert info.misses >= 1
+    assert info.hits >= 1
+
+
+def test_cached_arl_matches_direct_engine() -> None:
+    values, probabilities = sign_step_distribution(10)
+    direct = cusum_run_length(
+        values, probabilities, 6, 4, sided='two'
+    ).arl
+    assert cached_arl(
+        values, probabilities, 6, 4, sided='two'
+    ) == pytest.approx(direct, rel=1e-12)
+
+
+def test_design_uses_cache() -> None:
+    """Повторный подбор ``h`` не пересчитывает уже встречавшиеся ARL."""
+    clear_run_length_cache()
+    design_sign_h(10, 500, 6, sided='two')
+    first = run_length_cache_info()
+    design_sign_h(10, 500, 6, sided='two')
+    second = run_length_cache_info()
+    assert second.misses == first.misses
+    assert second.hits > first.hits
+
+
+def test_clear_run_length_cache() -> None:
+    values, probabilities = sign_step_distribution(5)
+    cached_arl(values, probabilities, 1, 4, sided='upper')
+    assert run_length_cache_info().currsize >= 1
+    clear_run_length_cache()
+    assert run_length_cache_info().currsize == 0

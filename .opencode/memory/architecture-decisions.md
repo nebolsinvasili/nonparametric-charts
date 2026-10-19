@@ -499,6 +499,14 @@
   - Распределения шага: `SN = 2T−n`, `T ~ BIN(n, p)` (в IC `p = 0.5`,
     OOC — произвольное `p`); `SR` — из точного нулевого распределения
     статистики Уилкоксона `T_n⁺` (динамика по подмножествам рангов).
+  - OOC-распределение `SR` под сдвигом: при `δ ≠ 0` — точная квадратура по
+    порядковым статистикам `|X|` для `n ≤ 20` (`method='auto'`) либо
+    Монте-Карло. Точный метод: условно по ``u_1<…<u_n`` знаки независимы,
+    производящий полином `D_r` рекуррентно интегрируется кумулятивной
+    трапецией на узлах Чебышёва—Лобатто; ошибка `~10⁻⁸…10⁻⁹`, время
+    `n=20` `~0.2 с`. Опыт — `experiments/cusum/02_sr_exact_vs_mc.py`.
+  - Кэш `ARL` (`cached_arl`, `lru_cache`) — для будущей сетки дизайна 3b.7,
+    чтобы не пересчитывать матрицы; хранит только ARL.
   - Если поглощение недостижимо (например, `k` больше максимума `|SR|`),
     движок явно сообщает о бесконечной ARL, а не возвращает «магическое» число.
   - API: функции `cusum_*_run_length`, результат `RunLengthResult`
@@ -537,8 +545,10 @@
 - **Файлы:** `src/nonparametric_charts/utils/run_length.py` (новый),
   `src/nonparametric_charts/utils/run_length_design.py` (новый),
   `utils/__init__.py`, `charts/cusum_sign_chart.py`,
-  `charts/cusum_signed_rank_chart.py`, `tests/test_run_length.py` (новый),
-  `tests/test_run_length_design.py` (новый), `docs/reports/cusum_plan.md`,
+  `charts/cusum_signed_rank_chart.py`, `cli.py` (алиас `experiment cusum`),
+  `tests/test_run_length.py` (новый), `tests/test_run_length_design.py`
+  (новый), `tests/test_cli.py` (новый), `experiments/cusum/01_oc_curves.py`,
+  `experiments/cusum/02_sr_exact_vs_mc.py`, `docs/reports/cusum_plan.md`,
   `.opencode/memory/book-map.md`.
 
 ---
