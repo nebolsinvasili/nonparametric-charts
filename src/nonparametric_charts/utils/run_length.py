@@ -54,6 +54,7 @@ __all__ = [
     'cusum_run_length',
     'cusum_sign_run_length',
     'cusum_signed_rank_run_length',
+    'renewal_cusum_run_length',
     'simulate_cusum_run_length',
     'simulate_cusum_sign_run_length',
     'simulate_cusum_signed_rank_run_length',
@@ -238,6 +239,64 @@ def _normalize_state(value: float) -> float:
     """Округление состояния, чтобы суммы с плавающей точкой совпадали."""
     normalized = round(float(value), _STATE_DECIMALS)
     return 0.0 if normalized == 0 else normalized
+
+
+def _prepare_step_distribution(
+    step_values: Sequence[float],
+    step_probabilities: Sequence[float],
+    sided: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Проверить и нормировать распределение шага; учесть нижнюю ветвь."""
+    if sided not in {'upper', 'lower', 'two'}:
+        raise ValueError(
+            "sided должен быть 'upper', 'lower' или 'two', "
+            f'получено {sided!r}'
+        )
+
+    values = np.asarray(step_values, dtype=float)
+    probabilities = np.asarray(step_probabilities, dtype=float)
+
+    if values.shape != probabilities.shape:
+        raise ValueError('step_values и step_probabilities должны быть одной длины')
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError('step_values должен быть непустым одномерным массивом')
+    if np.any(probabilities < 0):
+        raise ValueError('Вероятности не могут быть отрицательными')
+
+    total = float(probabilities.sum())
+    if total <= 0:
+        raise ValueError('Сумма вероятностей должна быть > 0')
+    probabilities = probabilities / total
+
+    mask = probabilities > 0
+    values = values[mask]
+    probabilities = probabilities[mask]
+
+    # Нижняя ветвь — отражение статистики: Z → −Z.
+    if sided == 'lower':
+        values = -values
+
+    return values, probabilities
+
+
+def _has_absorbing_transition(
+    states: Sequence,
+    step_values: np.ndarray,
+    k: float,
+    h: float,
+    sided: str,
+) -> bool:
+    """Есть ли из какого-либо достижимого состояния выход в поглощение."""
+    for state in states:
+        for value in step_values:
+            if sided == 'two':
+                upper, lower = state
+                if (max(0.0, upper + value - k) >= h
+                        or min(0.0, lower + value + k) <= -h):
+                    return True
+            elif max(0.0, state + value - k) >= h:
+                return True
+    return False
 
 
 def _reachable_upper_states(
@@ -474,34 +533,10 @@ def cusum_run_length(
         raise ValueError(f'Референсное значение k должно быть > 0, получено {k}')
     if h <= 0:
         raise ValueError(f'Интервал решения h должно быть > 0, получено {h}')
-    if sided not in {'upper', 'lower', 'two'}:
-        raise ValueError(
-            "sided должен быть 'upper', 'lower' или 'two', "
-            f'получено {sided!r}'
-        )
 
-    values = np.asarray(step_values, dtype=float)
-    probabilities = np.asarray(step_probabilities, dtype=float)
-
-    if values.shape != probabilities.shape:
-        raise ValueError('step_values и step_probabilities должны быть одной длины')
-    if values.ndim != 1 or values.size == 0:
-        raise ValueError('step_values должен быть непустым одномерным массивом')
-    if np.any(probabilities < 0):
-        raise ValueError('Вероятности не могут быть отрицательными')
-
-    total = float(probabilities.sum())
-    if total <= 0:
-        raise ValueError('Сумма вероятностей должна быть > 0')
-    probabilities = probabilities / total
-
-    mask = probabilities > 0
-    values = values[mask]
-    probabilities = probabilities[mask]
-
-    # Нижняя ветвь — отражение статистики: Z → −Z.
-    if sided == 'lower':
-        values = -values
+    values, probabilities = _prepare_step_distribution(
+        step_values, step_probabilities, sided
+    )
 
     if sided == 'two':
         states = _reachable_two_sided_states(values, k, h)
@@ -616,6 +651,162 @@ def cusum_signed_rank_run_length(
 
 
 # --------------------------------------------------------------------------- #
+#  Интегральное уравнение / renewal
+# --------------------------------------------------------------------------- #
+
+def renewal_cusum_run_length(
+    step_values: Sequence[float],
+    step_probabilities: Sequence[float],
+    k: float,
+    h: float,
+    *,
+    sided: str = 'two',
+    max_quantile: float = 1.0,
+    survival_tolerance: float = 1e-12,
+    max_t: int = 2_000_000,
+) -> RunLengthResult:
+    """
+    Распределение RL через уравнение восстановления (интегральный метод).
+
+    Вместо обращения ``(I − Q)`` распространяется вектор распределения по
+    состояниям; PMF — масса, поглощённая на шаге ``t``, а моменты считаются
+    по выживанию:
+
+        E(N)   = Σ_{t≥0} P(N > t)
+        E(N²)  = Σ_{t≥0} (2t + 1) P(N > t)
+
+    Parameters
+    ----------
+    step_values, step_probabilities : sequence[float]
+        Распределение статистики подгруппы.
+    k, h : float
+        Параметры карты.
+    sided : {'upper', 'lower', 'two'}, default='two'
+        Тип карты.
+    max_quantile, survival_tolerance, max_t
+        Условия остановки и предохранитель.
+
+    Returns
+    -------
+    RunLengthResult
+        Характеристики RL; ``method = 'renewal'``.
+
+    Notes
+    -----
+    Для решётчатой статистики ``SN``/``SR`` это **та же** система уравнений,
+    что и марковская цепь (ур. 3.21–3.24, стр. 112), но реализованная
+    независимо — без построения и обращения ``Q``. Служит контрольной
+    проверкой марковского движка (этап 3b.3), а не отдельной моделью.
+    """
+    if k <= 0:
+        raise ValueError(f'Референсное значение k должно быть > 0, получено {k}')
+    if h <= 0:
+        raise ValueError(f'Интервал решения h должно быть > 0, получено {h}')
+
+    values, probabilities = _prepare_step_distribution(
+        step_values, step_probabilities, sided
+    )
+
+    if sided == 'two':
+        states = _reachable_two_sided_states(values, k, h)
+    else:
+        states = _reachable_upper_states(values, k, h)
+    index = {state: i for i, state in enumerate(states)}
+
+    if not _has_absorbing_transition(states, values, k, h, sided):
+        raise ValueError(
+            'Карта не сигнализирует при данных k и h: ARL бесконечна'
+        )
+
+    distribution = np.zeros(len(states), dtype=float)
+    distribution[0] = 1.0
+
+    pmf: list[float] = []
+    cdf: list[float] = []
+    survival = 1.0
+    first_moment = 1.0          # слагаемое t = 0: P(N > 0) = 1
+    second_moment = 1.0         # слагаемое t = 0: (2·0 + 1)·1 = 1
+    truncated = True
+
+    for t in range(1, max_t + 1):
+        new_distribution = np.zeros_like(distribution)
+        absorbed = 0.0
+
+        for i, mass in enumerate(distribution):
+            if mass == 0.0:
+                continue
+            state = states[i]
+            for value, probability in zip(values, probabilities):
+                transition_probability = mass * probability
+                if sided == 'two':
+                    upper, lower = state  # type: ignore[misc]
+                    new_upper = max(0.0, upper + value - k)
+                    new_lower = min(0.0, lower + value + k)
+                    if new_upper >= h or new_lower <= -h:
+                        absorbed += transition_probability
+                    else:
+                        key = (_normalize_state(new_upper),
+                               _normalize_state(new_lower))
+                        new_distribution[index[key]] += transition_probability
+                else:
+                    new_state = max(0.0, state + value - k)  # type: ignore[operator]
+                    if new_state >= h:
+                        absorbed += transition_probability
+                    else:
+                        new_distribution[index[_normalize_state(new_state)]] += \
+                            transition_probability
+
+        survival -= absorbed
+        survival = max(survival, 0.0)
+        pmf.append(absorbed)
+        cdf.append(1.0 - survival)
+        first_moment += survival
+        second_moment += (2 * t + 1) * survival
+        distribution = new_distribution
+
+        if survival <= survival_tolerance or (1.0 - survival) >= max_quantile:
+            truncated = survival > survival_tolerance
+            break
+    else:
+        truncated = True
+
+    arl = first_moment
+    sdrl = float(np.sqrt(max(0.0, second_moment - arl ** 2)))
+    cdf_array = np.asarray(cdf, dtype=float)
+    percentiles = {
+        float(q): _percentile_from_cdf(cdf_array, q)
+        for q in (0.05, 0.25, 0.5, 0.75, 0.95)
+    }
+
+    if not pmf:
+        raise ValueError('Карта не сигнализирует при данных k и h: ARL бесконечна')
+
+    result = RunLengthResult(
+        arl=float(arl),
+        sdrl=sdrl,
+        mrl=percentiles[0.5],
+        percentiles=percentiles,
+        pmf=np.asarray(pmf, dtype=float),
+        cdf=cdf_array,
+        states=np.asarray(states, dtype=float),
+        n_states=len(states),
+        method='renewal',
+        truncated=truncated,
+        k=float(k),
+        h=float(h),
+        sided=sided,
+        metadata={
+            'second_moment': float(second_moment),
+            'step_min': float(values.min()),
+            'step_max': float(values.max()),
+        },
+    )
+    if not np.isfinite(result.arl) or result.arl <= 0:
+        raise ValueError('Карта не сигнализирует при данных k и h: ARL бесконечна')
+    return result
+
+
+# --------------------------------------------------------------------------- #
 #  Симуляция (Монте-Карло)
 # --------------------------------------------------------------------------- #
 
@@ -719,31 +910,12 @@ def simulate_cusum_run_length(
         raise ValueError(f'Референсное значение k должно быть > 0, получено {k}')
     if h <= 0:
         raise ValueError(f'Интервал решения h должно быть > 0, получено {h}')
-    if sided not in {'upper', 'lower', 'two'}:
-        raise ValueError(
-            "sided должен быть 'upper', 'lower' или 'two', "
-            f'получено {sided!r}'
-        )
     if n_rep < 1:
         raise ValueError(f'Число повторов должно быть ≥ 1, получено {n_rep}')
 
-    values = np.asarray(step_values, dtype=float)
-    probabilities = np.asarray(step_probabilities, dtype=float)
-    if values.shape != probabilities.shape or values.ndim != 1:
-        raise ValueError('step_values и step_probabilities должны быть '
-                         'одномерными массивами одной длины')
-    if np.any(probabilities < 0):
-        raise ValueError('Вероятности не могут быть отрицательными')
-    total = float(probabilities.sum())
-    if total <= 0:
-        raise ValueError('Сумма вероятностей должна быть > 0')
-    probabilities = probabilities / total
-    mask = probabilities > 0
-    values = values[mask]
-    probabilities = probabilities[mask]
-
-    if sided == 'lower':
-        values = -values
+    values, probabilities = _prepare_step_distribution(
+        step_values, step_probabilities, sided
+    )
 
     rng = np.random.default_rng(seed)
 

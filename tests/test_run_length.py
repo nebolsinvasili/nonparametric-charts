@@ -20,6 +20,7 @@ from nonparametric_charts.utils.run_length import (
     cusum_run_length,
     cusum_sign_run_length,
     cusum_signed_rank_run_length,
+    renewal_cusum_run_length,
     sign_step_distribution,
     signed_rank_step_distribution,
     simulate_cusum_sign_run_length,
@@ -137,6 +138,40 @@ def test_generic_engine_accepts_arbitrary_steps() -> None:
     )
     assert result.arl > 0
     assert result.n_states >= 1
+
+
+# --------------------------------------------------------------------------- #
+#  Интегральное уравнение / renewal (3b.3)
+# --------------------------------------------------------------------------- #
+
+def test_renewal_matches_markov_example_4_8() -> None:
+    """Renewal-движок воспроизводит точные характеристики примера 4.8."""
+    values, probabilities = sign_step_distribution(5)
+    renewal = renewal_cusum_run_length(values, probabilities, 1, 4, sided='upper')
+    markov = cusum_sign_run_length(5, 1, 4, sided='upper')
+
+    assert renewal.method == 'renewal'
+    assert renewal.arl == pytest.approx(markov.arl, abs=1e-8)
+    assert renewal.sdrl == pytest.approx(markov.sdrl, abs=1e-8)
+    assert renewal.percentiles == markov.percentiles
+
+
+def test_renewal_matches_markov_example_4_10() -> None:
+    """Renewal-движок воспроизводит точные характеристики примера 4.10."""
+    values, probabilities = signed_rank_step_distribution(4)
+    renewal = renewal_cusum_run_length(values, probabilities, 2, 6, sided='upper')
+    markov = cusum_signed_rank_run_length(4, 2, 6, sided='upper')
+
+    assert renewal.arl == pytest.approx(markov.arl, abs=1e-8)
+    assert renewal.sdrl == pytest.approx(markov.sdrl, abs=1e-8)
+    assert renewal.percentiles == markov.percentiles
+
+
+def test_renewal_rejects_impossible_chart() -> None:
+    """Renewal-движок так же диагностирует бесконечную ARL."""
+    values, probabilities = signed_rank_step_distribution(4)
+    with pytest.raises(ValueError, match='ARL бесконечна'):
+        renewal_cusum_run_length(values, probabilities, 11, 10, sided='upper')
 
 
 # --------------------------------------------------------------------------- #
