@@ -15,14 +15,14 @@
 
 1. **Первоисточник — книга Чакраборти.** Любая формула, константа, правило сигнала
    или трактовка метода сначала сверяется с
-   `docs/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`
+   `docs/ref/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`
    (Chakraborti & Graham, *Nonparametric Statistical Process Control*, Wiley, 2019).
    В коде, докстрингах и ноутбуках указывать **раздел и печатную страницу**.
    Если в книге неясно — идти в указанный там первоисточник/статью и ссылаться на
-   него. Вторичный русский источник: `docs/Klyachkin_...pdf` (В. Н. Клячкин).
+   него. Вторичный русский источник: `docs/ref/Klyachkin_...pdf` (В. Н. Клячкин).
    → `rules/sources.md`, навык `book-lookup`.
 2. **Графики — минималистичный LaTeX.** Единый стиль через
-   `src/utils/plot_style.py::apply_minimal_latex_style()`.
+   `src/nonparametric_charts/utils/plot_style.py::apply_minimal_latex_style()`.
    → `rules/plot-style.md`.
 3. **Ноутбук = теория → код → разбор кода → логика → формулы → графики.** Формулы
    давать и в LaTeX-разметке, **и** в виде кода. → `rules/notebook-style.md`,
@@ -30,6 +30,19 @@
 4. **После каждой задачи** (без отдельного запроса) обновить `.opencode/memory/` и
    предложить шаги по улучшению процесса/снижению токенов. → `/wrap-up`.
 5. **Язык общения и оформление кода** — `rules/profile.md`.
+6. **Пакет ставится и через `pip`, и через `poetry`.** `nonparametric-charts` —
+   устанавливаемый пакет (src-layout, `src/nonparametric_charts/`, ADR-017);
+   импорт — `from nonparametric_charts...`. Нельзя ломать ни
+   `poetry install`, ни `pip install .`.
+7. **Старт нового чата.** Работу начинать только после слова-триггера `СВОДКА`
+   от пользователя. Перед началом: проверить установку навыков/MCP/настроек,
+   прочитать `.opencode/memory/` и дать краткую сводку сделанного. Если `СВОДКА`
+   нет — предупредить и ждать, работу не начинать. → `rules/profile.md`.
+8. **Ветки для крупных изменений.** Крупное изменение (новая карта, смена
+   архитектуры/пакета, реструктуризация репозитория, новый отчёт, правка
+   > ~5 файлов) — только в ветке `<type>/<topic>` от `master`; по завершении
+   правок — `merge --no-ff` и удаление ветки, при новых правках — заново.
+   Журнал веток — `.opencode/memory/branches.md`. → `rules/profile.md`.
 
 ## Навигация
 
@@ -44,24 +57,35 @@
 | Карта книги Чакраборти | `.opencode/memory/book-map.md` |
 | Журнал задач | `.opencode/memory/tasks-completed.md` |
 | Навыки | `.opencode/skills/` (`book-lookup`, `notebook-build`, `style-check`) |
-| Шаблоны | `.opencode/templates/` |
+| Шаблоны | `.opencode/templates/` (`new-chart`, `chart-plan`, `notebook-structure`) |
+| Порядок построения новой карты | `.opencode/commands/new-chart.md` |
+| Рабочие документы карт (план/досье) | `docs/reports/<chart>_plan.md` |
 | Сабагенты | `.opencode/agents/` (`book-checker`, `notebook-writer`) |
+| Отчёты (TeX/PDF, сборка) | `docs/reports/` |
+| Источники (книги, статьи) | `docs/ref/` |
+| Проверка примеров книги (консоль + графики) | `examples/` |
+| Эксперименты (R/Python) и инструкции | `experiments/` |
+| Тесты кода | `tests/` |
+| Ноутбуки быстрого старта под свои данные | `notebooks/` |
 
 ## Ключи по проекту (кратко)
 
-- Дерево: `src/base/base_chart.py` (`BaseControlChart`), `src/charts/*`
-  (`SignChart`, `SignedRankChart`, ...), `src/utils/*` (`DataLoader`,
+- Дерево: `src/nonparametric_charts/base/base_chart.py` (`BaseControlChart`), `src/nonparametric_charts/charts/*`
+  (`SignChart`, `SignedRankChart`, ...), `src/nonparametric_charts/utils/*` (`DataLoader`,
   `DataPreprocessor`, `plotting`, `plot_style`).
-- Импорты абсолютные: `from src.{base,charts,utils}. import ...`. Запуск из корня
+- Импорты абсолютные: `from nonparametric_charts.{base,charts,utils}. import ...`. Запуск из корня
   репозитория.
-- Коэффициенты: `src/utils/coefficients.json` находится автоматически
-  (в ноутбуках при необходимости — `'../src/utils/coefficients.json'`) либо
+- Коэффициенты: `src/nonparametric_charts/utils/coefficients.json` находится автоматически
+  (в ноутбуках при необходимости — `'../src/nonparametric_charts/utils/coefficients.json'`) либо
   `NONPARAMETRIC_CHARTS_COEFFICIENTS`. Содержит константы **параметрических** карт; сами
   непараметрические карты их не используют.
 - Данные: строка = подгруппа, столбец = измерение, `sample_size` = число столбцов.
-- Окружение: Python >= 3.14, `poetry install --with dev`, kernel `nonparametric-charts-py`,
-  ноутбуки запускать из `notebooks/`.
-- Тесты — по примерам книги (один файл = один пример): `tests/sign/`
-  (примеры 4.1–4.3), `tests/signed_rank/` (примеры 4.4–4.5), плюс
-  `tests/test_control_constant_selection.py` (правило выбора `a`).
-  Построенные в тестах карты сохраняются в `results/tests/` с номером примера.
+- Окружение: Python >= 3.14, установка — `poetry install --with dev` **или**
+  `pip install .`; kernel `nonparametric-charts-py`, ноутбуки запускать из `notebooks/`.
+- Алиасы запуска: `npc test` (тесты), `npc examples` (примеры книги),
+  `npc experiment {sn|sr|all}` (опыты). Определены в `[project.scripts]`
+  (`src/nonparametric_charts/cli.py`), доступны и через pip, и через poetry.
+- Тесты кода: `tests/` — инварианты API (`tests/test_charts.py`) и правило
+  выбора `a` (`tests/test_control_constant_selection.py`). Проверка примеров
+  книги (консольный вывод + графики) — в `examples/` (см. `examples/README.md`),
+  опыты — в `experiments/`, ноутбуки быстрого старта — в `notebooks/`.

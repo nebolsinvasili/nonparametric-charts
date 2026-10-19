@@ -10,8 +10,8 @@
 
 - **Дата:** 2026-10-17 · **Статус:** уточнено (см. правку ниже)
 - **Контекст:** `BaseControlChart._load_coefficients` ищет файл по списку путей.
-- **Решение:** путь `src/utils/coefficients.json` вычисляется в `_load_coefficients`
-  от `__file__` (`.../src/utils/coefficients.json`), поэтому файл находится
+- **Решение:** путь `src/nonparametric_charts/utils/coefficients.json` вычисляется в `_load_coefficients`
+  от `__file__` (`.../src/nonparametric_charts/utils/coefficients.json`), поэтому файл находится
   автоматически из любого каталога. Явный `coefficients_file` /
   `NONPARAMETRIC_CHARTS_COEFFICIENTS` нужны только для нестандартного расположения. Для
   непараметрических карт значения коэффициентов **не используются** (это константы
@@ -24,15 +24,18 @@
 
 ## ADR-002. Запуск из корня, абсолютные импорты
 
-- **Дата:** 2026-10-17 · **Статус:** принято
+- **Дата:** 2026-10-17 · **Статус:** заменено ADR-017 (2026-10-19)
 - **Контекст:** нет `src/__init__.py`, нет установленного пакета `nonparametric-charts`
   (`package-mode = false`).
-- **Решение:** импорты `from src.{base,charts,utils}. import ...`; запуск из корня
-  репозитория; ноутбуки — из `notebooks/` с `sys.path.append('..')`.
-- **Отвергнуто:** превращение в устанавливаемый пакет `nonparametric-charts`; относительные импорты
-  внутри `src`.
+- **Решение (на тот момент):** импорты `from src.{base,charts,utils}. import ...`; запуск
+  из корня репозитория; ноутбуки — из `notebooks/` с `sys.path.append('..')`.
+- **Отвергнуто:** превращение в устанавливаемый пакет `nonparametric-charts`;
+  относительные импорты внутри `src`.
+- **Замена:** ADR-017 сделал проект устанавливаемым пакетом (pip + poetry); импорты —
+  `from nonparametric_charts...`, код в `src/nonparametric_charts/`; запуск из корня
+  сохранён.
 
-## ADR-003. Стиль графиков — `src/utils/plot_style.py`, `mathtext` вместо `usetex`
+## ADR-003. Стиль графиков — `src/nonparametric_charts/utils/plot_style.py`, `mathtext` вместо `usetex`
 
 - **Дата:** 2026-10-17 · **Статус:** принято
 - **Контекст:** нужен минималистичный LaTeX-вид; подписи и легенды — на русском.
@@ -116,7 +119,7 @@
 - **Решение:** везде — имя `nonparametric-charts`: `pyproject.toml` (`name`),
   `AGENTS.md`, `.opencode/rules|memory`, докстринги/тесты. Технический
   идентификатор `SHCC_COEFFICIENTS` переименован в
-  `NONPARAMETRIC_CHARTS_COEFFICIENTS` (`src/base/base_chart.py`, `conftest.py`,
+  `NONPARAMETRIC_CHARTS_COEFFICIENTS` (`src/nonparametric_charts/base/base_chart.py`, `conftest.py`,
   документация). Jupyter-kernel — `nonparametric-charts-py`. Локальный каталог
   переименован в `nonparametric-charts`, `git remote` обновлён.
 - **Отвергнуто:** оставлять сокращение `ShCC` (не совпадает с именем репозитория);
@@ -147,6 +150,330 @@
   пользователю; молча называть `a/3` «σ» без оговорки — методологически неверно.
 - **Оговорка:** если понадобится строгая σ-разметка, границы нужно ставить на
   реальных 1σ и 2σ (формулы выше), а не на `a/3`, `2a/3`.
+
+## ADR-012. Режим `symmetric` = нормальная аппроксимация (SN и SR)
+
+- **Дата:** 2026-10-18 · **Статус:** принято; идентификатор заменён ADR-013
+  (`symmetric` → `normal`)
+- **Контекст:** до сих пор `_calc_a_symmetric` был тождествен
+  `_calc_a_conservative` (тот же результат), то есть отдельного «симметричного»
+  режима фактически не существовало. При этом и в литературе, и в пакете
+  `npSPC` (`Limits_asymptotical`) распространена нормальная аппроксимация
+  границ, и её хотелось воспроизвести.
+- **Решение:** переопределить `symmetric` как асимптотическую (нормальную)
+  границу: `a₀ = ⌈z_{1−FAR₀/2}·SD⌉`, где `SD(SN) = √n`,
+  `SD(SR) = √(n(n+1)(2n+1)/6)`; затем подъём до достижимого значения той же
+  чётности (`n` для SN, `S = n(n+1)/2` для SR) и зажим `1 ≤ a ≤ n` (SN) /
+  `1 ≤ a ≤ S` (SR). Идентификатор `approach='symmetric'` сохранён ради
+  обратной совместимости; в подписях — «Симметричный (нормальная
+  аппроксимация)». Для SN это воспроизводит `npSPC` при неодносторонней
+  трактовке `far`.
+- **Следствия:** достигнутый FAR режима `symmetric` **не обязан** быть
+  `≤ FAR₀` — в этом его принципиальное отличие от `conservative`. Для
+  SR эффективная граница `symmetric` совпадает с `npSPC::Limits_asymptotical`
+  (дробная граница пакета при целочисленной статистике действует как
+  ближайшее целое сверху); при малых `n` асимптотическая граница уходит выше
+  `S` и становится недостижимой, тогда как `symmetric` зажимается до `S`.
+- **Отвергнуто:** оставлять `symmetric = conservative` (тупиковый дубль);
+  округление вниз до чётности (нарушает гарантию симметрии хвостов и
+  воспроизводимость `npSPC`); отдельный четвёртый режим `asymptotical`
+  (раздувает API, ломает обратную совместимость).
+- **Обновлено:** `src/nonparametric_charts/charts/sign_chart.py`, `src/nonparametric_charts/charts/signed_rank_chart.py`,
+  `tests/test_control_constant_selection.py`, `docs/reports/sn_verification.tex`,
+  `docs/sr_bounds_theory.tex`, `docs/reports/sr_verification.tex`, генераторы
+  `docs/reports/experiments/{sn,sr}/*_gen_figdata.py`, `docs/reports/scripts/gen_coords.py`,
+  ноутбуки SN/SR.
+
+---
+
+## ADR-013. Переименование режимов `conservative`→`exact`, `symmetric`→`normal`
+
+- **Дата:** 2026-10-18 · **Статус:** принято
+- **Контекст:** имена режимов не отражали метод. `symmetric` описывал симметрию
+  границ `±a`, но она присуща **всем** режимам; реальное отличие `symmetric` —
+  нормальная аппроксимация. `conservative` точнее описывается как точное
+  (дискретное) распределение с критерием хвоста `FAR₀/2`.
+- **Решение:** публичные идентификаторы `exact` (точное распределение,
+  `P(·≥a) ≤ FAR₀/2`, округление вверх до достижимого значения) и `normal`
+  (нормальная аппроксимация `⌈z·SD⌉`); `nearest` оставлен без изменений.
+  Приватные методы `_calc_a_exact`, `_calc_a_normal`. Значение по умолчанию —
+  `approach='exact'`. `ApproachType = Literal['exact', 'nearest', 'normal']`.
+  Подписи в `APPROACH_LABELS`: «Точный (консервативный, FAR₀)» и
+  «Нормальная аппроксимация».
+- **Обратная совместимость:** `APPROACH_ALIASES = {'conservative': 'exact',
+  'symmetric': 'normal'}` с `DeprecationWarning`; нормализация выполняется в
+  `__init__` и `calculate_limits` (`normalize_approach`).
+- **Отвергнуто:** `exact_far`/`normal_far` (лишний суффикс); жёсткое удаление
+  старых строк (ломает ноутбуки и скрипты опытов); переименование `nearest`.
+- **Обновлено:** `src/nonparametric_charts/charts/{sign_chart,signed_rank_chart}.py`,
+  `tests/test_control_constant_selection.py`, `docs/reports/experiments/{sn,sr}/*`,
+  `docs/reports/scripts/gen_coords.py`, `docs/{sn_verification,sr_verification,
+  sr_bounds_theory}.tex`, ноутбуки SN/SR.
+
+---
+
+## ADR-015. Внешние скиллы — через `npx skills` (skills.sh), каталог `.agents/skills`
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** понадобилось поставить пять внешних навыков агента
+  (`adversarial-review`, `superpowers`, `planning-with-files`, `humanizer`,
+  `Understand-Anything`). В проекте есть собственный каталог
+  `.opencode/skills/` с русскими кастомными навыками; встал вопрос, куда и как
+  класть сторонние.
+- **Решение:** ставить через CLI экосистемы **skills.sh** — `npx skills add
+  <owner/repo>` (пакет `skills@latest`). Проектная установка (без `-g`), явный
+  таргет-агент `-a opencode`, без интерактива `-y`. CLI раскладывает файлы в
+  **`.agents/skills/<skill>/`** (режим `copy`) и ведёт корневой
+  `skills-lock.json` с источником и хешем каждого навыка; OpenCode читает этот
+  каталог наравне с `.opencode/skills/`. Источники: `obra/superpowers`,
+  `OthmanAdi/planning-with-files`, `blader/humanizer`,
+  `Egonex-AI/Understand-Anything`, `poteto/noodle` (навык `adversarial-review`).
+- **Отвергнуто:**
+  - ручное клонирование репозиториев в `.opencode/skills/` — тянет огромные
+    коллекции (у `pedronauck/skills` 185 навыков) и их дрейф без версионирования;
+  - глобальная установка (`-g`) — навыки нужны именно этому проекту;
+  - дублирование внешних навыков в `.opencode/skills/` — два каталога навыков
+    неизбежны (кастомные vs сторонние), смешивать не нужно;
+  - `pedronauck/skills` как источник `adversarial-review` — навык есть в
+    каталоге skills.sh, но в текущем репозитории уже отсутствует; установлен из
+    первоисточника `poteto/noodle`.
+- **Оговорки:**
+  - `adversarial-review` жёстко требует внешние CLI (`codex exec` / `claude -p`)
+    и файл `brain/principles.md`, которого в проекте нет, — навык заточен под
+    среду Claude Code / Codex;
+  - `planning-with-files` использует Claude-хуки — в OpenCode они не
+    исполняются (работает только сама процедура);
+  - для `planning-with-files` установлены все языковые варианты из репозитория
+    (`-ar/-de/-es/-zh/-zht`), кроме английского; при желании удаляются
+    `npx skills remove`.
+
+---
+
+## ADR-016. Структура `docs/`: `reports/` и `ref/`
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** в `docs/` вперемешку лежали источники (книги, статьи), исходники
+  и PDF отчётов, скрипты опытов, генераторы, `Makefile` и `build/`.
+- **Решение:** всё в `docs/` делится на две части:
+  - `docs/ref/` — **источники** (книги, статьи), только для чтения;
+  - `docs/reports/` — **отчёты** и всё, что их собирает: `.tex`/`.pdf`,
+    `sr_macros.tex`, `Makefile`, `build/`, `scripts/`, `experiments/sn|sr/`.
+  Пути внутри отчётов и опытов — **от корня репозитория**
+  (`docs/reports/experiments/...`). Сборка: `cd docs/reports && make`.
+  Скрипты по-прежнему запускаются из корня репозитория.
+- **Отвергнуто:** оставить эксперименты/скрипты в корне `docs/` (смешивание с
+  источниками); держать `Makefile`/`build` уровнем выше (сборка вне каталога
+  отчётов); относительные пути внутри отчётов (ломаются при запуске не от
+  корня).
+- **Обновлено:** `AGENTS.md`, `.opencode/rules/reference.md`,
+  `.opencode/rules/sources.md`, `.opencode/skills/book-lookup/SKILL.md`,
+  `.opencode/memory/book-map.md`, `.gitignore`, `docs/reports/Makefile`,
+  `docs/reports/scripts/gen_coords.py`, все опыты и `.tex`-отчёты.
+- **Проверка:** `cd docs/reports && make` — оба PDF собираются без ошибок.
+
+---
+
+## ADR-017. Устанавливаемый пакет `nonparametric-charts` (pip + poetry)
+
+- **Дата:** 2026-10-19 · **Статус:** принято (заменяет ADR-002)
+- **Контекст:** требование пользователя — проект должен ставиться и через `pip`, и
+  через `poetry`. Ранее (ADR-002) стоял `package-mode = false`, `src/` не был
+  пакетом, импорты — `from src...`; `pip install .` не работал.
+- **Решение:** стандартная **src-layout**:
+  - код в `src/nonparametric_charts/{base,charts,utils}`;
+  - `src/nonparametric_charts/__init__.py` экспортирует `SignChart`,
+    `SignedRankChart`, `BaseControlChart`, `__version__`; у `base`/`charts` свои
+    `__init__.py`;
+  - имя дистрибутива — `nonparametric-charts`, импортируемый пакет —
+    `nonparametric_charts` (дефис в имени модуля невозможен);
+  - `pyproject.toml`: `[tool.poetry] packages = [{ include =
+    "nonparametric_charts", from = "src" }]`; сборка — `poetry-core`
+    (`build-system` уже был PEP 517).
+- **Следствия:** `poetry install` и `pip install .`/`pip wheel .` работают;
+  `coefficients.json` попадает в пакет и по-прежнему находится от `__file__`;
+  импорты — `from nonparametric_charts...`; запуск из корня сохранён. Тесты,
+  ноутбуки и скрипты опытов обновлены (тесты/ноутбуки добавляют `src` в
+  `sys.path`, чтобы работать и без установки).
+- **Отвергнуто:** оставить `from src...` и сдавать пакет с верхнеуровневым именем
+  `src` (занимает общий неймспейс, анти-паттерн); пакет в корне репозитория без
+  `src/` (ломает уже сложившуюся структуру и документацию).
+- **Проверка:** `poetry run pytest` — 119 passed; `poetry run pip wheel --no-deps .`
+  — wheel собран; `poetry build` — sdist + wheel; импорт
+  `from nonparametric_charts import SignChart, SignedRankChart, BaseControlChart`.
+
+---
+
+## ADR-018. Разделение ответственности: `tests/` — код, `examples/` — примеры, `experiments/` — опыты
+
+- **Дата:** 2026-10-19 · **Статус:** принято (заменяет ADR-008)
+- **Контекст:** тесты были «по примерам книги» (`tests/sign/`,
+  `tests/signed_rank/`) и одновременно рисовали графики в `results/tests/`;
+  опыты лежали внутри `docs/reports/experiments/`. Пользователь попросил
+  развести четыре сущности: проверку примеров, опыты, тесты кода и ноутбуки.
+- **Решение:**
+  - `tests/` — **тесты кода** (pytest): инварианты API (`tests/test_charts.py`)
+    и правило выбора `a` (`tests/test_control_constant_selection.py`);
+  - `examples/` — **проверка примеров книги**: скрипты печатают консольный
+    отчёт, сверяют значения с книгой и сохраняют графики в `results/examples/`;
+  - `experiments/` — **опыты** (R/Python) и инструкции, вынесены из
+    `docs/reports/` в корень; пути внутри — от корня репозитория;
+  - `docs/reports/` остаётся только отчётами и сборкой (`Makefile`, `build/`,
+    `scripts/`); `notebooks/` — быстрый старт под свои данные (не менялись).
+- **Отвергнуто:** держать примеры подкаталогом `tests/` (смешивание проверки
+  примеров и тестов кода); оставить опыты в `docs/reports/experiments/`
+  (пользователь просил отдельный корень).
+- **Затронуто:** `tests/` (удалены `sign/`, `signed_rank/`, переписан
+  `conftest.py`, добавлен `test_charts.py`), новый `examples/`, перенос
+  `docs/reports/experiments/` → `experiments/`, `docs/reports/Makefile`,
+  `docs/reports/*.tex`, `.gitignore`, `AGENTS.md`, `.opencode/rules/reference.md`.
+- **Проверка:** `poetry run pytest -q` — 111 passed;
+  `poetry run python examples/run_all.py` — все 5 примеров совпали с книгой.
+
+---
+
+## ADR-019. Процедура построения новой карты: этапы 0–12, рабочий документ, шлюзы
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** постройка новой карты — длинный многосессионный процесс (первоисточник →
+  теория/архитектура → код → примеры → ноутбук → опыты → воспроизводимость → отчёт).
+  Знания между сессиями терялись: `memory/` авто-подгружается и не годится для длинных
+  досье; не было единого порядка и критериев готовности.
+- **Решение:**
+  - единая процедура — команда `.opencode/commands/new-chart.md`: этапы 0–12,
+    каждый с микро-этапами, **шлюзом** (критерий готовности) и записью в память;
+  - постоянный **рабочий документ карты** — `docs/reports/<chart>_plan.md`
+    (шаблон `.opencode/templates/chart-plan.md`): шапка, Definition of Done, досье
+    первоисточника, архитектура, план, журнал прогресса, риски. Не авто-подгружается;
+  - сессионный протокол: в начале сессии — прочитать рабочий документ, в конце —
+    записать «сделано → проверено → далее»;
+  - шлюзы ревью: `book-checker` (после досье и после кода), `style-check` (ноутбук),
+    `adversarial-review` + `humanizer`/`no-ai-slop` (отчёт).
+- **Заменяет/уточняет:** ADR-018 в части, где живут примеры: шаблон `new-chart.md`
+  приведён в соответствие (примеры — в `examples/`, тесты — инварианты API).
+- **Отвергнуто:** держать досье и журнал в `.opencode/memory/*` (раздувает контекст
+  каждой сессии); один общий файл процесса без разбивки по этапам (нет критериев
+  готовности и точек возобновления).
+- **Файлы:** `.opencode/commands/new-chart.md`, `.opencode/templates/chart-plan.md`,
+  `.opencode/templates/new-chart.md`, `AGENTS.md`, `docs/reports/<chart>_plan.md`.
+
+---
+
+## ADR-020. Архитектура CUSUM-карт: наследование от `BaseControlChart`, общая статистика знаков
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** первая карта «с памятью» — CUSUM по знакам (`CUSUM-SN`, §4.2.2.1,
+  стр. 202–203). Существующий `BaseControlChart` ориентирован на Шухарт (границы
+  `±a`, зоны, Вестерн-Электрик), но даёт единый жизненный цикл и стиль графиков.
+- **Решение:**
+  - `CusumSignChart` **наследуется от** `BaseControlChart` (единый API: `calculate_limits`,
+    `plot`, `get_summary`, `get_data`, `get_control_limits`, `get_violations`,
+    `_setup_style`). Отдельный базовый класс не заводим.
+  - Семантика адаптируется через `control_limits`: `CL = 0`, `UCL = +h`, `LCL = −h`,
+    плюс ключи `k`, `h`. Генерик-аксессоры (`get_control_limits`) работают как есть.
+  - Дизайн-параметры `k` (референс) и `h` (интервал решения) — аргументы конструктора
+    и `calculate_limits`; значения по умолчанию — как в примере 4.6. Корректный
+    подбор `h` под номинальный `ARL_IC` — отдельная фаза 3b (§3.2.2, Amin et al., 1995).
+  - Расчёт знаковой статистики `SN_t = 2T_t − n` вынесен в утилиту
+    `utils/statistics.py` (`sign_counts`, `sign_statistic`); её используют и `SignChart`,
+    и `CusumSignChart` — без дублирования логики.
+  - «Сигнал» = **первое** пересечение: `SN_t⁺ ≥ h` (верх) или `SN_t⁻ ≤ −h` (низ) —
+    как в книге («signals at observation 28», стр. 231). Записывается по одному
+    первому сигналу на сторону; счётчики `N⁺`/`N⁻` — число периодов с ненулевой
+    статистикой (стр. 231). Перезапуск ветви после сигнала — вне объёма 3a.
+- **Разбиение:** 3a — ядро (явные `k`, `h`, сигналы, `plot`, `summary`); 3b — RL
+  (Марков, ур. 4.9) и подбор `h` под `ARL_IC`.
+- **Отвергнуто:** новый `BaseCusumChart` (дублирование жизненного цикла и стиля);
+  самостоятельный класс без базы (теряется единый API); переиспользование
+  `approach` (`exact`/`normal`/`nearest`) — у CUSUM другие параметры (`k`,`h`),
+  а не константа `a`; запись всех точек за `h` как нарушений (книга сообщает
+  первое срабатывание).
+- **Обновлено (по мере работы):** `src/nonparametric_charts/utils/statistics.py`,
+  `src/nonparametric_charts/charts/cusum_sign_chart.py`,
+  `src/nonparametric_charts/charts/sign_chart.py` (делегирование в утилиту),
+  `tests/test_cusum_sign_chart.py`.
+
+---
+
+## ADR-021. Единая семантическая палитра и стиль всех графиков
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** цвета и размеры были «размазаны»: `plot_style.py` задавал
+  палитру, но карты и помощники использовали `'crimson'`, `'red'`, `'green'`,
+  `'gold'`, `'darkorange'`, `'steelblue'`, `'forestgreen'`, hex-коды и
+  «магические» `fontsize`/`fontweight`. Графики одного проекта выглядели
+  по-разному; часть переменных (`VIOLATION`) не использовалась.
+- **Решение:**
+  - `utils/plot_style.py` — единственный источник **семантических ролей** цвета:
+    `INK`, `ACCENT`, `ALERT`, `CENTER`, `LIMIT`, `WARNING`, `ZONE_LINE`,
+    `ZONE_FILL`, `GRID`, плюс `PALETTE` для сравнений. Роль → (цвет, стиль
+    линии, толщина) хранится в `ROLE_STYLES`.
+  - Шрифт — внешний LaTeX (`usetex=True`) с `T2A` + `babel russian`, поэтому
+    **кириллица тоже набирается LaTeX-ом** (Computer Modern). Помощник
+    `math_text()` оборачивает русский текст в `$\text{...}$` (при
+    `usetex=False` — в `$\mathrm{...}$`). Внешний TeX не нужен: есть
+    `apply_minimal_latex_style(usetex=False)`.
+  - Помощник `hline(ax, y, role, ...)` рисует горизонтальные линии по роли;
+    `despine` и rcParams (размеры, отсутствие рамок/сетки, нежирные
+    заголовки) задают типографику. Легенда — в рамке, как информационный блок,
+    компактная (2 колонки, `loc='best'`); блок данных — в правом верхнем углу.
+  - Границы — сдержанный цвет `LIMIT` (кирпичный), предупреждающие —
+    `WARNING`; красный `ALERT` остаётся только за сигналами.
+  - Все карты (`SignChart`, `SignedRankChart`, `CusumSignChart`), базовые
+    помощники (`BaseControlChart._add_*`, `utils/plotting.py`), примеры и
+    ноутбуки используют только эти роли. «Сырые» цвета запрещены.
+  - Единый акцент данных — `ACCENT` для всех карт (ранее у `SignedRankChart`
+    был фиолетовый `#6A4C93`). Вторая серия (нижняя ветвь CUSUM) берётся из
+    `PALETTE`.
+  - Зоны A/B/C — тонкие серые линии; заливка только `ZONE_FILL` при
+    `fill_zones=True`. Значения точек — `INK`/`ALERT`, без белых плашек.
+  - Цвета TeX-отчётов (`\definecolor`) приведены к тем же значениям.
+- **Отвергнуто:** хранить палитру в каждом модуле (рассинхронизация);
+  делить по картам разные акценты (нет единого стиля); использовать
+  `seaborn`/`mpl.style` (лишняя зависимость, кириллица).
+- **Обновлено:** `src/nonparametric_charts/utils/plot_style.py`,
+  `src/nonparametric_charts/utils/plotting.py`,
+  `src/nonparametric_charts/base/base_chart.py`,
+  `src/nonparametric_charts/charts/{sign,signed_rank,cusum_sign}_chart.py`,
+  `examples/example_4_{3,5}_runs_2of2.py`,
+  `notebooks/signed_rank_chart_analysis.ipynb`,
+  `docs/reports/{sn,sr}_verification.tex`, `.opencode/rules/plot-style.md`.
+
+---
+
+## ADR-022. `CusumSignedRankChart` на архитектуре ADR-020; общая знаково-ранговая статистика
+
+- **Дата:** 2026-10-19 · **Статус:** принято
+- **Контекст:** вторая CUSUM-карта — по знаковым рангам (`CUSUM-SR`, §4.2.2.4,
+  стр. 205–206, ур. 4.10–4.12). Архитектура CUSUM уже определена (ADR-020),
+  нужно переиспользовать её без дублирования; знаково-ранговая статистика
+  `SR_t` сейчас считается внутри `SignedRankChart._calculate_sr_for_row`.
+- **Решение:**
+  - Новый класс `CusumSignedRankChart` **наследует ту же схему**, что и
+    `CusumSignChart` (ADR-020): `BaseControlChart`, `control_limits` =
+    `{CL: 0, UCL: +h, LCL: −h, k, h}`; аргументы `k`, `h` конструктора и
+    `calculate_limits`; правило **первого** сигнала на сторону
+    (`SR_t⁺ ≥ h` / `SR_t⁻ ≤ −h`); счётчики `N⁺`/`N⁻`.
+  - Знаково-ранговая статистика `SR_t = Σ_j sign(X_{tj}−μ₀)·R_{tj}` вынесена в
+    утилиту `utils/statistics.py` (`signed_rank_statistic`,
+    `signed_rank_details`); её используют и `SignedRankChart`, и
+    `CusumSignedRankChart` — без дублирования логики (симметрия с ADR-020 для
+    знаков).
+  - **Опечатка книги (ур. 4.11, стр. 206)** учтена: нижняя ветвь реализуется как
+    `SR_t⁻ = min(0, SR_{t−1}⁻ + SR_t + k)` (с `+k`), как в рабочем примере 4.9
+    (стр. 237) и по параллели с ур. 4.8; в докстринге/тесте зафиксировано
+    расхождение с печатной формулой.
+  - Требуется **симметрия** распределения (как и для Шухарт-SR, §4.2.1.2).
+  - Значения по умолчанию `k = 3`, `h = 8` — как в примере 4.9 (аналог выбора
+    по примеру 4.6 в ADR-020); корректный подбор `h` под `ARL_IC` — фаза 3b.
+- **Разбиение:** ядро (`k`, `h`, сигналы, `plot`, `summary`) — сейчас; RL
+  (Марков, ур. 4.12; проверка — пример 4.10) и подбор `h` — фаза 3b, общая с SN.
+- **Отвергнуто:** дублировать расчёт `SR` внутри CUSUM-класса (расхождение с
+  `SignedRankChart`); вводить ветвь по опечатке ур. 4.11 (противоречит примеру
+  4.9); отдельный базовый класс для SR-CUSUM (см. ADR-020).
+- **Обновлено:** `src/nonparametric_charts/utils/statistics.py`,
+  `src/nonparametric_charts/charts/cusum_signed_rank_chart.py` (новый),
+  `src/nonparametric_charts/charts/signed_rank_chart.py` (делегирование),
+  `tests/test_cusum_signed_rank_chart.py` (новый), `examples/example_4_9_*`.
 
 ---
 
