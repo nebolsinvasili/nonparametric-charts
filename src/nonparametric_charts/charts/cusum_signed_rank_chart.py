@@ -51,6 +51,7 @@ import matplotlib.pyplot as plt
 
 from nonparametric_charts.base.base_chart import BaseControlChart
 from nonparametric_charts.utils.statistics import signed_rank_details
+from nonparametric_charts.utils.run_length import cusum_signed_rank_run_length
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -388,3 +389,39 @@ class CusumSignedRankChart(BaseControlChart):
             'first_signal': first,
             'violations': self.violations,
         }
+
+    # ------------------------------------------------------------------ #
+    #  Длина серии (RL)
+    # ------------------------------------------------------------------ #
+
+    def run_length(
+        self,
+        sided: str = 'two',
+        *,
+        max_quantile: float = 0.9999,
+    ):
+        """
+        Распределение длины серии CUSUM-SR (марковский метод, IC).
+
+        Parameters
+        ----------
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        max_quantile : float, default=0.9999
+            Уровень усечения хвоста PMF.
+
+        Returns
+        -------
+        RunLengthResult
+            ``ARL``, ``SDRL``, ``MRL``, перцентили, PMF/CDF.
+
+        Notes
+        -----
+        Ур. 4.12 (стр. 206), ур. 3.22–3.24 (стр. 112). Используются
+        текущие ``k`` и ``h`` карты (после ``calculate_limits`` — их
+        актуальные значения).
+        """
+        return cusum_signed_rank_run_length(
+            self.sample_size, self.k, self.h,
+            sided=sided, max_quantile=max_quantile,
+        )

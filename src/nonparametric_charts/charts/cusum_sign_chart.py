@@ -63,6 +63,8 @@ except ImportError:  # fallback: локальная реализация
         positive, negative, _ = sign_counts(values, target_value)
         return positive - negative
 
+from nonparametric_charts.utils.run_length import cusum_sign_run_length
+
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -397,3 +399,42 @@ class CusumSignChart(BaseControlChart):
             'first_signal': first,
             'violations': self.violations,
         }
+
+    # ------------------------------------------------------------------ #
+    #  Длина серии (RL)
+    # ------------------------------------------------------------------ #
+
+    def run_length(
+        self,
+        sided: str = 'two',
+        *,
+        p: float = 0.5,
+        max_quantile: float = 0.9999,
+    ):
+        """
+        Распределение длины серии CUSUM-SN (марковский метод).
+
+        Parameters
+        ----------
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        p : float, default=0.5
+            ``P(X ≥ μ₀)``; в IC ``p = 0.5``.
+        max_quantile : float, default=0.9999
+            Уровень усечения хвоста PMF.
+
+        Returns
+        -------
+        RunLengthResult
+            ``ARL``, ``SDRL``, ``MRL``, перцентили, PMF/CDF.
+
+        Notes
+        -----
+        Ур. 4.9 (стр. 203), ур. 3.22–3.24 (стр. 112). Используются
+        текущие ``k`` и ``h`` карты (после ``calculate_limits`` — их
+        актуальные значения).
+        """
+        return cusum_sign_run_length(
+            self.sample_size, self.k, self.h,
+            sided=sided, p=p, max_quantile=max_quantile,
+        )
