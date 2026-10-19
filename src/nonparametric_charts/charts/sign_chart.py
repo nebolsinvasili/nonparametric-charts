@@ -26,43 +26,89 @@
 
 Три подхода к расчёту константы a:
 ----------------------------------
-1. **Консервативный** (по книге, стр. 191):
+1. **Точный (консервативный)** (по книге, стр. 191), id `exact`:
        a = наименьшее достижимое (той же чётности, что и n)
        с P(SN ≥ a) ≤ FAR₀/2; гарантирует FAR ≤ FAR₀.
        Если вероятность недостижима (малое n) — a = n.
 
-2. **«Ближайший»** (обучение / сравнение):
+2. **Нормальная аппроксимация** (id `normal`):
+       a = наименьшее достижимое значение (той же чётности, что и n),
+       не меньше z_{1−FAR₀/2} · SD(SN), где SD(SN) = sqrt(n);
+       асимптотическая граница (ср. npSPC::Limits_asymptotical).
+
+3. **«Ближайший»** (id `nearest`, обучение / сравнение):
        a = argmin_a |P(|SN| ≥ a) − α|
        Достигнутый FAR может превышать α.
-
-3. **Симметричный квантильный** (альтернатива):
-       a — наименьшее достижимое с P(SN ≥ a) ≤ FAR₀/2;
-       для чётного n совпадает с консервативным.
 """
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 from typing import Dict, Optional, Tuple, List, Literal
 from scipy import stats
 from scipy.stats import binom
 from scipy.special import comb
 
 try:
-    from src.base.base_chart import BaseControlChart
+    from nonparametric_charts.base.base_chart import BaseControlChart
 except ImportError:
-    # Fallback: минимальный базовый класс, если src недоступен
+    # Fallback: минимальный базовый класс, если пакет недоступен
     class BaseControlChart:
-        def __init__(self, data, sample_size, coefficients_file=None):
+        def __init__(self, data, sample_size):
             self.data = data
             self.sample_size = sample_size
-            self.coefficients_file = coefficients_file
+
+try:
+    from nonparametric_charts.utils.statistics import sign_counts
+except ImportError:  # fallback: локальная реализация
+    def sign_counts(values, target_value):
+        arr = np.asarray(values, dtype=float).ravel()
+        arr = arr[~np.isnan(arr)]
+        positive = int(np.sum(arr > target_value))
+        negative = int(np.sum(arr < target_value))
+        zero = int(arr.size - positive - negative)
+        return positive, negative, zero
+
+from nonparametric_charts.utils.plot_style import (
+    ACCENT,
+    ALERT,
+    DATA_MARKER_SIZE,
+    INK,
+    PALETTE,
+    SIGNAL_MARKER_SIZE,
+    ZONE_FILL,
+    ZONE_LINE,
+    annotate_values,
+    data_legend,
+    hline,
+    math_text,
+)
 
 
-ApproachType = Literal['conservative', 'nearest', 'symmetric']
+ApproachType = Literal['exact', 'nearest', 'normal']
+
+# Устаревшие идентификаторы подходов (обратная совместимость).
+APPROACH_ALIASES = {
+    'conservative': 'exact',
+    'symmetric': 'normal',
+}
+
+
+def normalize_approach(approach: str) -> str:
+    """Приводит устаревший идентификатор подхода к актуальному."""
+    new = APPROACH_ALIASES.get(approach)
+    if new is not None:
+        warnings.warn(
+            f"approach={approach!r} устарел, используйте {new!r}",
+            DeprecationWarning, stacklevel=2,
+        )
+        return new
+    return approach
 
 
 class SignChart(BaseControlChart):
@@ -79,22 +125,28 @@ class SignChart(BaseControlChart):
         Размер подгруппы n.
     target_value : float, optional
         Целевое значение μ₀. Если None — медиана всех данных.
-    approach : {'conservative', 'nearest', 'symmetric'}, default='conservative'
-        Подход к расчёту константы a.
+    approach : {'exact', 'nearest', 'normal'}, default='exact'
+        Подход к расчёту константы a. Устаревшие синонимы
+        {'conservative', 'symmetric'} принимаются с предупреждением.
     far0 : float, default=0.0027
-        Номинальный FAR для консервативного и симметричного подходов.
+        Номинальный FAR для точного и нормального подходов.
     alpha : float, default=0.05
         Уровень значимости для «ближайшего» подхода.
-    c_value : int, optional
-        Явно заданное значение c. Если задано — подходы игнорируются.
-    coefficients_file : str, optional
-        Путь к файлу с коэффициентами (для совместимости).
+    a_value : int, optional
+        Явно заданное значение a. Если задано — подходы игнорируются.
     """
 
     APPROACH_LABELS = {
-        'conservative': 'Консервативный (FAR₀)',
+        'exact': 'Точный (консервативный, FAR₀)',
+        'normal': 'Нормальная аппроксимация',
         'nearest': 'Ближайший (α)',
-        'symmetric': 'Симметричный квантильный',
+    }
+
+    #: Короткие подписи для заголовка (без Unicode-индексов, безопасно для LaTeX).
+    APPROACH_PLOT_LABELS = {
+        'exact': 'точный (консервативный)',
+        'normal': 'нормальная аппроксимация',
+        'nearest': 'ближайший',
     }
 
     def __init__(
@@ -102,20 +154,19 @@ class SignChart(BaseControlChart):
         data: pd.DataFrame,
         sample_size: int,
         target_value: Optional[float] = None,
-        approach: ApproachType = 'conservative',
+        approach: ApproachType = 'exact',
         far0: float = 0.0027,
         alpha: float = 0.05,
-        c_value: Optional[int] = None,
-        coefficients_file: Optional[str] = None,
+        a_value: Optional[int] = None,
     ):
-        super().__init__(data, sample_size, coefficients_file)
+        super().__init__(data, sample_size)
         self.chart_type = "Sign"
-        self.color = '#2E86AB'
-        self.approach = approach
+        self.color = ACCENT
+        self.approach = normalize_approach(approach)
         self.far0 = far0
         self.alpha = alpha
         self.significance_level = alpha
-        self.c_value = c_value
+        self.a_value = a_value
 
         if target_value is None:
             self.target_value = self._calculate_median()
@@ -144,9 +195,7 @@ class SignChart(BaseControlChart):
         if len(values) == 0:
             return {'positive': 0, 'negative': 0, 'zero': 0, 'sn': 0}
 
-        positive = int(np.sum(values > self.target_value))
-        negative = int(np.sum(values < self.target_value))
-        zero = len(values) - positive - negative
+        positive, negative, zero = sign_counts(values, self.target_value)
 
         return {
             'positive': positive,
@@ -186,9 +235,9 @@ class SignChart(BaseControlChart):
         return min(2.0 * cls._p_sn_ge_a(n, a), 1.0)
 
     @classmethod
-    def _calc_a_conservative(cls, n: int, far0: float) -> Tuple[int, float]:
+    def _calc_a_exact(cls, n: int, far0: float) -> Tuple[int, float]:
         """
-        Подход 1: консервативный (книга, стр. 191–192).
+        Подход 1: точный (консервативный; книга, стр. 191–192).
 
         a — наименьшее *достижимое* значение SN (той же чётности, что и n),
         для которого P(SN ≥ a) ≤ FAR₀/2; это гарантирует FAR ≤ FAR₀.
@@ -207,7 +256,7 @@ class SignChart(BaseControlChart):
     @classmethod
     def _calc_a_nearest(cls, n: int, alpha: float) -> Tuple[int, float]:
         """
-        Подход 2: ближайший к α.
+        Подход 3: ближайший к α.
         a = argmin_a |P(|SN| ≥ a) − α|.
         """
         best_a, best_p, best_diff = 1, 1.0, float('inf')
@@ -219,31 +268,32 @@ class SignChart(BaseControlChart):
         return best_a, best_p
 
     @classmethod
-    def _calc_a_symmetric(cls, n: int, far0: float) -> Tuple[int, float]:
+    def _calc_a_normal(cls, n: int, far0: float) -> Tuple[int, float]:
         """
-        Подход 3: симметричный квантильный.
+        Подход 2: нормальная аппроксимация (симметричная граница ±a).
 
-        a — наименьшее достижимое значение (той же чётности, что и n) с
-        P(SN ≥ a) ≤ FAR₀/2; границы ±a при этом симметричны. Для чётного n
-        совпадает с консервативным подходом.
+        Граница берётся по нормальному приближению распределения SN в IC:
+        a — наименьшее достижимое значение (той же чётности, что и n),
+        не меньше z_{1−FAR₀/2} · SD(SN), где SD(SN) = sqrt(n). Риск делится
+        симметрично: по z_{1−FAR₀/2}·SD на каждый хвост, суммарно номинальный
+        двусторонний FAR₀. Это асимптотический по природе метод (ср.
+        npSPC::Limits_asymptotical); достигнутый FAR не обязан быть ≤ FAR₀.
         """
-        if n % 2 == 0:
-            return cls._calc_a_conservative(n, far0)
-        target = far0 / 2
-        for a in range(1, n + 1, 2):
-            if cls._p_sn_ge_a(n, a) <= target:
-                return a, 2.0 * cls._p_sn_ge_a(n, a)
-        return n, 2.0 * cls._p_sn_ge_a(n, n)
+        z = stats.norm.ppf(1.0 - far0 / 2.0)
+        a0 = int(np.ceil(z * np.sqrt(n)))
+        a = a0 if a0 % 2 == n % 2 else a0 + 1
+        a = min(max(a, 1), n)
+        return a, 2.0 * cls._p_sn_ge_a(n, a)
 
-    def _calculate_c_value(self) -> int:
-        """Расчёт c согласно выбранному подходу."""
+    def _calculate_a_value(self) -> int:
+        """Расчёт a согласно выбранному подходу."""
         n = self.sample_size
-        if self.approach == 'conservative':
-            a, _ = self._calc_a_conservative(n, self.far0)
+        if self.approach == 'exact':
+            a, _ = self._calc_a_exact(n, self.far0)
         elif self.approach == 'nearest':
             a, _ = self._calc_a_nearest(n, self.alpha)
-        elif self.approach == 'symmetric':
-            a, _ = self._calc_a_symmetric(n, self.far0)
+        elif self.approach == 'normal':
+            a, _ = self._calc_a_normal(n, self.far0)
         else:
             raise ValueError(f"Неизвестный подход: {self.approach}")
         return max(a, 1)
@@ -261,15 +311,15 @@ class SignChart(BaseControlChart):
         rows = []
 
         for approach, label in self.APPROACH_LABELS.items():
-            if approach == 'conservative':
-                a, far = self._calc_a_conservative(n, self.far0)
+            if approach == 'exact':
+                a, far = self._calc_a_exact(n, self.far0)
                 desc = f'P(SN ≥ a) ≤ FAR₀/2, FAR₀ = {self.far0}'
+            elif approach == 'normal':
+                a, far = self._calc_a_normal(n, self.far0)
+                desc = f'нормальная аппроксимация z·√n, FAR₀ = {self.far0}'
             elif approach == 'nearest':
                 a, far = self._calc_a_nearest(n, self.alpha)
                 desc = f'|P(|SN| ≥ a) − α| → min, α = {self.alpha}'
-            elif approach == 'symmetric':
-                a, far = self._calc_a_symmetric(n, self.far0)
-                desc = 'Наименьшее нечётное с P(SN ≥ a) ≤ FAR₀/2'
             else:
                 continue
 
@@ -294,7 +344,7 @@ class SignChart(BaseControlChart):
 
     def calculate_limits(
         self,
-        c_value: Optional[int] = None,
+        a_value: Optional[int] = None,
         approach: Optional[ApproachType] = None,
     ) -> Dict:
         """
@@ -302,17 +352,17 @@ class SignChart(BaseControlChart):
 
         Parameters
         ----------
-        c_value : int, optional
-            Явно заданное c. Если указано — подход игнорируется.
+        a_value : int, optional
+            Явно заданное a. Если указано — подход игнорируется.
         approach : str, optional
-            Переопределить подход к расчёту c.
+            Переопределить подход к расчёту a.
 
         Returns
         -------
-        Dict с полями CL, UCL, LCL, c_value, target_value, FAR, ARL_IC, MRL_IC.
+        Dict с полями CL, UCL, LCL, a_value, target_value, FAR, ARL_IC, MRL_IC.
         """
         if approach is not None:
-            self.approach = approach
+            self.approach = normalize_approach(approach)
 
         # Расчёт SN по каждой подгруппе
         subgroup_data = self.data.iloc[:, :self.sample_size]
@@ -327,13 +377,13 @@ class SignChart(BaseControlChart):
         n = self.sample_size
 
         # Определение c
-        if c_value is not None:
-            self.c_value = int(c_value)
-        elif self.c_value is None:
-            self.c_value = self._calculate_c_value()
-        # иначе используем установленное ранее self.c_value
+        if a_value is not None:
+            self.a_value = int(a_value)
+        elif self.a_value is None:
+            self.a_value = self._calculate_a_value()
+        # иначе используем установленное ранее self.a_value
 
-        a = self.c_value
+        a = self.a_value
         cl, ucl, lcl = 0, a, -a
 
         # Вероятности и характеристики длины серии
@@ -345,7 +395,7 @@ class SignChart(BaseControlChart):
             'CL': cl,
             'UCL': ucl,
             'LCL': lcl,
-            'c_value': a,
+            'a_value': a,
             'target_value': self.target_value,
             'n': n,
             'approach': self.approach,
@@ -372,7 +422,7 @@ class SignChart(BaseControlChart):
         if self.subgroups is None or self.control_limits is None:
             return
 
-        a = self.control_limits['c_value']
+        a = self.control_limits['a_value']
         for _, row in self.subgroups.iterrows():
             if row['sn'] >= a or row['sn'] <= -a:
                 self.violations.append({
@@ -391,19 +441,26 @@ class SignChart(BaseControlChart):
         save_path: Optional[str] = None,
         title: Optional[str] = None,
         show_values: bool = True,
-        show_zones: bool = True,
+        show_zones: bool = False,
         fill_zones: bool = False,
-        value_offset: Tuple[float, float] = (0, 0.35),
+        value_offset: Tuple[float, float] = (0, 4.0),
     ) -> Tuple[plt.Figure, plt.Axes]:
         """
         Построение знаковой карты Шухарта.
 
+        Оформление едино с CUSUM-картами (``CusumSignChart.plot``): линия с
+        маркерами, тот же запас по осям и постановка подписей значений.
+
         Параметры
         ---------
-        show_zones : bool, default=True
-            Рисовать границы зон (горизонтальные линии на ±a/3 и ±2a/3).
+        show_zones : bool, default=False
+            Рисовать границы зон Вестерн-Электрик (±a/3 и ±2a/3) и подписи
+            A/B/C справа. По умолчанию выключено — как в CUSUM-картах.
         fill_zones : bool, default=False
             Если True — заливать зоны полупрозрачным цветом.
+        value_offset : (float, float), default=(0, 4.0)
+            Смещение подписи значения от точки **в типографских пунктах**
+            (не в единицах данных), поэтому зазор не зависит от масштаба оси.
 
         Цвета зон (σ = a/3 — контрольная граница a соответствует 3σ)
         ---------
@@ -418,128 +475,108 @@ class SignChart(BaseControlChart):
 
         x = self.subgroups['subgroup'].values
         y = self.subgroups['sn'].values
-        a = self.control_limits['c_value']
+        a = self.control_limits['a_value']
 
-        # --- Зоны ---
-        zone_colors = {
-            'A': 'red',       # внешняя
-            'B': 'gold',      # средняя
-            'C': 'green',     # внутренняя
-        }
-        zone_alpha = 0.10 if fill_zones else 0.0
+        # --- Зоны (сдержанные: серые линии и опциональная серая заливка) ---
+        zone_alpha = 0.5 if fill_zones else 0.0
 
         if show_zones and a >= 3:
             z1, z2 = a / 3, 2 * a / 3
 
             if fill_zones:
-                ax.axhspan(z2, a, color=zone_colors['A'], alpha=zone_alpha, zorder=0)
-                ax.axhspan(-a, -z2, color=zone_colors['A'], alpha=zone_alpha, zorder=0)
-                ax.axhspan(z1, z2, color=zone_colors['B'], alpha=zone_alpha, zorder=0)
-                ax.axhspan(-z2, -z1, color=zone_colors['B'], alpha=zone_alpha, zorder=0)
-                ax.axhspan(-z1, z1, color=zone_colors['C'], alpha=zone_alpha, zorder=0)
+                for lo, hi in ((z2, a), (-a, -z2), (z1, z2),
+                               (-z2, -z1), (-z1, z1)):
+                    ax.axhspan(lo, hi, color=ZONE_FILL, alpha=zone_alpha,
+                               zorder=0)
 
             # Горизонтальные линии границ зон
             for level in (z1, z2, -z1, -z2):
-                ax.axhline(
-                    y=level,
-                    color=zone_colors['B'] if abs(level) == z1 else zone_colors['A'],
-                    linestyle=':',
-                    linewidth=1.0,
-                    alpha=0.8,
-                    zorder=1,
-                )
+                ax.axhline(y=level, color=ZONE_LINE, linestyle=':',
+                           linewidth=1.0, zorder=1)
 
             # Подписи зон справа
             x_right = x.max() + 0.4
-            ax.text(x_right, (z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
-                    fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, (z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
-                    fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, 0.5 * z1, 'Зона C (0…1σ)', color=zone_colors['C'],
-                    fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z1 + z2) / 2, 'Зона B (1σ…2σ)', color='darkgoldenrod',
-                    fontsize=9, va='center', ha='left', fontweight='bold')
-            ax.text(x_right, -(z2 + a) / 2, 'Зона A (2σ…3σ)', color=zone_colors['A'],
-                    fontsize=9, va='center', ha='left', fontweight='bold')
+            for level, label in (
+                ((z2 + a) / 2, math_text('Зона A') + r' ($2\sigma\ldots3\sigma$)'),
+                ((z1 + z2) / 2, math_text('Зона B') + r' ($1\sigma\ldots2\sigma$)'),
+                (0.5 * z1, math_text('Зона C') + r' ($0\ldots1\sigma$)'),
+                (-(z1 + z2) / 2, math_text('Зона B') + r' ($1\sigma\ldots2\sigma$)'),
+                (-(z2 + a) / 2, math_text('Зона A') + r' ($2\sigma\ldots3\sigma$)'),
+            ):
+                ax.text(x_right, level, label, color=INK, fontsize=9,
+                        va='center', ha='left')
 
-        # --- Точки: одного размера, нарушения — красные ---
+        # --- Точки: линия с маркерами, нарушения — крупные акцентные точки ---
         is_violation = (y >= a) | (y <= -a)
 
-        ax.scatter(
-            x[~is_violation], y[~is_violation],
-            s=60, color=self.color, zorder=3,
-            edgecolors='white', linewidths=1,
-            label='$SN_i$',
-        )
+        ax.plot(x, y, '-o', color=self.color, linewidth=1.2,
+                markersize=DATA_MARKER_SIZE, zorder=3, label='$SN_i$')
         if is_violation.any():
             ax.scatter(
                 x[is_violation], y[is_violation],
-                s=60, color='crimson', zorder=3,
-                edgecolors='white', linewidths=1,
-                label=f'Нарушения ({is_violation.sum()})',
+                s=SIGNAL_MARKER_SIZE, color=ALERT, zorder=4,
+                label=f'{math_text("Нарушения")} ({is_violation.sum()})',
             )
 
-        ax.plot(x, y, '-', color=self.color, linewidth=1.0, alpha=0.5, zorder=2)
-
         # --- Контрольные линии ---
-        ax.axhline(0, color='green', linestyle='-', linewidth=1.5,
-                label='CL = 0', zorder=1)
-        ax.axhline(a, color='red', linestyle='--', linewidth=1.5,
-                label=f'UCL = +{a}', zorder=1)
-        ax.axhline(-a, color='red', linestyle='--', linewidth=1.5,
-                label=f'LCL = −{a}', zorder=1)
+        hline(ax, 0, "center", label=r'$\mathrm{CL} = 0$')
+        hline(ax, a, "limit", label=rf'$\mathrm{{UCL}} = +{a}$')
+        hline(ax, -a, "limit", label=rf'$\mathrm{{LCL}} = -{a}$')
 
-        # --- Подписи значений ---
+        # --- Подписи значений (над точкой при y ≥ 0, под ней иначе) ---
         if show_values:
-            for xi, yi, viol in zip(x, y, is_violation):
-                color = 'darkred' if viol else 'black'
-                ax.annotate(
-                    f'{yi:d}',
-                    xy=(xi, yi),
-                    xytext=(xi + value_offset[0], yi + value_offset[1]),
-                    fontsize=9, color=color, ha='center', va='bottom',
-                    bbox=dict(boxstyle='round,pad=0.15', fc='white',
-                            ec='none', alpha=0.75),
-                )
+            annotate_values(ax, x, y, offset=value_offset, fmt="{:.1f}")
 
         # --- Оформление ---
-        ax.set_xlabel('Номер подгруппы', fontsize=12)
-        ax.set_ylabel('SN = n⁺ − n⁻', fontsize=12)
+        ax.set_xlabel(r'$t$ (' + math_text('номер подгруппы') + ')')
+        ax.set_ylabel(r'$SN_t = n^{+} - n^{-}$')
         ax.set_xticks(x)
-        ax.set_xlim(x.min() - 0.5, x.max() + 3.2)
-        ax.set_ylim(-(a + max(2, a * 0.3)), a + max(2, a * 0.3))
 
-        approach_label = self.APPROACH_LABELS.get(self.approach, self.approach)
+        # Правый отступ — под подписи зон, только когда они показаны.
+        right_pad = 3.2 if (show_zones and a >= 3) else 0.5
+        ax.set_xlim(x.min() - 0.5, x.max() + right_pad)
+
+        # Запас сверху, чтобы блок данных в правом верхнем углу не закрывал
+        # подписи значений и точки (как в CUSUM-картах).
+        y_low = min(float(y.min()), -a)
+        y_high = max(float(y.max()), a)
+        span = max(y_high - y_low, 1.0)
+        ax.set_ylim(y_low - 0.05 * span, y_high + 0.25 * span)
+
+        approach_label = self.APPROACH_PLOT_LABELS.get(
+            self.approach, self.approach)
         if title is None:
-            title = (f'Знаковая карта Шухарта — n={self.sample_size}, '
-                    f'a={a}, подход: {approach_label}')
-        ax.set_title(title, fontsize=13, fontweight='bold')
+            title = (math_text('Знаковая карта Шухарта') + ' — '
+                     rf'$n={self.sample_size}$, $a={a}$, '
+                     + math_text('подход:') + ' ' + math_text(approach_label))
+        ax.set_title(title)
 
-        # --- Информационный блок ---
-        info = (
-            f"μ₀ = {self.target_value:.4f}    n = {self.sample_size}, m = {len(self.subgroups)}\n"
-            f"a = {a}   (σ = a/3)\n"
-            f"FAR = {self.control_limits['FAR']:.4f}   ARL = {self.control_limits['ARL_IC']:.1f}   MRL = {self.control_limits['MRL_IC']}"
-        )
-        ax.text(0.985, 0.98, info, transform=ax.transAxes,
-                fontsize=9, va='top', ha='right',
-                bbox=dict(boxstyle='round,pad=0.5', fc='white',
-                        ec='gray', alpha=0.9))
+        # --- Информационный блок (в стиле легенды, правый верхний угол) ---
+        info_lines = [
+            rf"$\mu_0 = {self.target_value:.4f}$    "
+            rf"$n = {self.sample_size}$, $m = {len(self.subgroups)}$",
+            rf"$a = {a}$   ($\sigma = a/3$)",
+            rf"$\mathrm{{FAR}} = {self.control_limits['FAR']:.4f}$   "
+            rf"$\mathrm{{ARL}} = {self.control_limits['ARL_IC']:.1f}$   "
+            rf"$\mathrm{{MRL}} = {self.control_limits['MRL_IC']}$",
+        ]
+        data_legend(ax, info_lines)
 
-        # Легенда с ручками для зон (если показываются)
+        # Легенда с ручками для границ зон (если показываются)
         handles, labels = ax.get_legend_handles_labels()
         if show_zones and a >= 3:
-            from matplotlib.lines import Line2D
             zone_handles = [
-                Line2D([0], [0], color=zone_colors['A'], linestyle=':',
-                    linewidth=1.5, label='Граница зоны A (2σ)'),
-                Line2D([0], [0], color='darkgoldenrod', linestyle=':',
-                    linewidth=1.5, label='Граница зоны B (1σ)'),
+                Line2D([0], [0], color=ZONE_LINE, linestyle=':',
+                       linewidth=1.5,
+                       label=math_text('Границы зон') + r' $\mathrm{A/B}$'),
             ]
             handles = handles + zone_handles
             labels = labels + [h.get_label() for h in zone_handles]
 
-        ax.legend(handles, labels, loc='upper left', fontsize=9, ncol=2)
+        ax.legend(handles, labels, loc='best',
+                  fontsize=8, ncol=2, labelspacing=0.25,
+                  handlelength=1.4, handletextpad=0.4,
+                  borderpad=0.3, borderaxespad=0.4, columnspacing=1.0)
         ax.grid(alpha=0.25, linestyle=':')
 
         plt.tight_layout()
@@ -566,44 +603,46 @@ class SignChart(BaseControlChart):
         sym_a, sym_far = [], []
 
         for n in n_range:
-            a_c, f_c = self._calc_a_conservative(n, self.far0)
+            a_c, f_c = self._calc_a_exact(n, self.far0)
             a_n, f_n = self._calc_a_nearest(n, self.alpha)
-            a_s, f_s = self._calc_a_symmetric(n, self.far0)
+            a_s, f_s = self._calc_a_normal(n, self.far0)
             cons_a.append(a_c); cons_far.append(f_c)
             near_a.append(a_n); near_far.append(f_n)
             sym_a.append(a_s);   sym_far.append(f_s)
 
         fig, axes = plt.subplots(1, 2, figsize=figsize)
 
+        colors = (PALETTE[0], PALETTE[3], PALETTE[2])
+
         # --- Левый график: значения a ---
-        axes[0].plot(n_range, cons_a, 'o-', color='steelblue',
-                     label=f'Консервативный (FAR₀ = {self.far0})')
-        axes[0].plot(n_range, near_a, 's--', color='crimson',
+        axes[0].plot(n_range, cons_a, 'o-', color=colors[0],
+                     label=f'Точный (FAR₀ = {self.far0})')
+        axes[0].plot(n_range, near_a, 's--', color=colors[1],
                      label=f'Ближайший (α = {self.alpha})')
-        axes[0].plot(n_range, sym_a, '^:', color='forestgreen',
-                     label='Симметричный квантильный')
-        axes[0].set_xlabel('n (размер подгруппы)', fontsize=11)
-        axes[0].set_ylabel('Константа a', fontsize=11)
-        axes[0].set_title('Значения a для трёх подходов', fontsize=12, fontweight='bold')
-        axes[0].legend(fontsize=9)
+        axes[0].plot(n_range, sym_a, '^:', color=colors[2],
+                     label='Нормальная аппроксимация')
+        axes[0].set_xlabel('n (размер подгруппы)')
+        axes[0].set_ylabel('Константа a')
+        axes[0].set_title('Значения a для трёх подходов')
+        axes[0].legend()
         axes[0].grid(alpha=0.3)
 
         # --- Правый график: достигнутый FAR ---
-        axes[1].plot(n_range, cons_far, 'o-', color='steelblue',
-                     label='Консервативный')
-        axes[1].plot(n_range, near_far, 's--', color='crimson',
+        axes[1].plot(n_range, cons_far, 'o-', color=colors[0],
+                     label='Точный')
+        axes[1].plot(n_range, near_far, 's--', color=colors[1],
                      label='Ближайший')
-        axes[1].plot(n_range, sym_far, '^:', color='forestgreen',
-                     label='Симметричный')
-        axes[1].axhline(self.far0, color='steelblue', linestyle=':', alpha=0.6,
+        axes[1].plot(n_range, sym_far, '^:', color=colors[2],
+                     label='Нормальная аппроксимация')
+        axes[1].axhline(self.far0, color=colors[0], linestyle=':', alpha=0.6,
                         label=f'FAR₀ = {self.far0}')
-        axes[1].axhline(self.alpha, color='crimson', linestyle=':', alpha=0.6,
+        axes[1].axhline(self.alpha, color=colors[1], linestyle=':', alpha=0.6,
                         label=f'α = {self.alpha}')
-        axes[1].set_xlabel('n (размер подгруппы)', fontsize=11)
-        axes[1].set_ylabel('Достигнутый FAR', fontsize=11)
-        axes[1].set_title('Достигнутые FAR', fontsize=12, fontweight='bold')
+        axes[1].set_xlabel('n (размер подгруппы)')
+        axes[1].set_ylabel('Достигнутый FAR')
+        axes[1].set_title('Достигнутые FAR')
         axes[1].set_yscale('log')
-        axes[1].legend(fontsize=9)
+        axes[1].legend()
         axes[1].grid(alpha=0.3, which='both')
 
         plt.tight_layout()
@@ -671,7 +710,7 @@ class SignChart(BaseControlChart):
             'approach': self.approach,
             'target_value': self.target_value,
             'n': self.sample_size,
-            'a': self.control_limits['c_value'],
+            'a': self.control_limits['a_value'],
             'UCL': self.control_limits['UCL'],
             'LCL': self.control_limits['LCL'],
             'CL': self.control_limits['CL'],

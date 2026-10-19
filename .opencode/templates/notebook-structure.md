@@ -27,16 +27,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from src.utils.plot_style import apply_minimal_latex_style, despine
+from nonparametric_charts.utils.plot_style import apply_minimal_latex_style, despine
 apply_minimal_latex_style()
 
-from src.utils import DataLoader, DataPreprocessor
+from nonparametric_charts.utils import DataLoader, DataPreprocessor
 ```
 
 ## Ячейка 4 (code). Данные и коэффициенты
 
 ```python
-COEFFICIENTS = '../src/utils/coefficients.json'   # ловушка: путь обязателен
+COEFFICIENTS = '../src/nonparametric_charts/utils/coefficients.json'   # ловушка: путь обязателен
 data = DataLoader('../data/data.csv').load()
 # sample_size = число столбцов (не строк)
 ```
@@ -62,7 +62,7 @@ $$ SN_i = n_i^{+} - n_i^{-} = 2T_i - n $$
 
 ```markdown
 ### Реализация
-<Вызов классов/функций из src/.>
+<Вызов классов/функций из `nonparametric_charts`.>
 
 ### Разбор
 <Что делает каждый шаг, какие предположения, что может пойти не так.>

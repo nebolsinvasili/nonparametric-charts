@@ -3,18 +3,25 @@
 
 Этот модуль определяет общий интерфейс для всех контрольных карт:
 - Единый API для расчета границ, построения графиков и получения сводок
-- Загрузка коэффициентов Шухарта
 - Вспомогательные методы для визуализации
 - Поиск нарушений по правилам Вестерн-Электрик
 """
 
-import os
-import json
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+from nonparametric_charts.utils.plot_style import (
+    ALERT,
+    CENTER,
+    INK,
+    LIMIT,
+    ZONE_FILL,
+    ZONE_LINE,
+    hline,
+)
 
 
 class BaseControlChart(ABC):
@@ -41,12 +48,9 @@ class BaseControlChart(ABC):
         Список нарушений
     chart_type : str
         Тип карты
-    coefficients : Dict
-        Коэффициенты Шухарта
     """
     
-    def __init__(self, data: pd.DataFrame, sample_size: int, 
-                 coefficients_file: Optional[str] = None):
+    def __init__(self, data: pd.DataFrame, sample_size: int):
         """
         Инициализация базовой контрольной карты
         
@@ -56,8 +60,6 @@ class BaseControlChart(ABC):
             Данные для построения карты (каждая строка - подгруппа)
         sample_size : int
             Размер подгруппы (n)
-        coefficients_file : str, optional
-            Путь к файлу с коэффициентами
         """
         self.data = data
         self.sample_size = sample_size
@@ -67,84 +69,8 @@ class BaseControlChart(ABC):
         self.chart_type = "Base"
         self.color = '#2E86AB'
         
-        # Загрузка коэффициентов
-        self.coefficients = self._load_coefficients(coefficients_file)
-        
         # Настройка стиля для графиков
         self._setup_style()
-    
-    def _load_coefficients(self, file_path: Optional[str] = None) -> Dict:
-        """
-        Загрузка коэффициентов из JSON файла
-        
-        Поиск файла происходит в следующем порядке:
-        1. Указанный путь
-        2. Переменная окружения NONPARAMETRIC_CHARTS_COEFFICIENTS
-        3. Стандартные пути в проекте
-        4. Текущая директория
-        
-        Returns:
-        --------
-        Dict: Словарь с коэффициентами для разных n
-        """
-        if file_path is None:
-            file_path = os.environ.get('NONPARAMETRIC_CHARTS_COEFFICIENTS', 'coefficients.json')
-        
-        # Поиск файла в различных местах
-        search_paths = [
-            file_path,
-            os.path.join('data', 'coefficients', 'coefficients.json'),
-            os.path.join('..', 'data', 'coefficients', 'coefficients.json'),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                        'data', 'coefficients', 'coefficients.json'),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                    'utils', 'coefficients.json')
-        ]
-        
-        for path in search_paths:
-            if os.path.exists(path):
-                file_path = path
-                break
-        else:
-            raise FileNotFoundError(
-                f"Файл коэффициентов не найден. Проверьте пути: {search_paths}"
-            )
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            raise ValueError(f"Ошибка парсинга JSON в файле {file_path}")
-    
-    def get_coefficient(self, key: str) -> float:
-        """
-        Получение коэффициента для заданного размера подгруппы
-        
-        Parameters:
-        -----------
-        key : str
-            Ключ коэффициента ('A2', 'D3', 'D4', 'B3', 'B4', 'A4')
-        
-        Returns:
-        --------
-        float: Значение коэффициента
-        
-        Raises:
-        -------
-        ValueError: Если коэффициенты не найдены
-        """
-        n_str = str(self.sample_size)
-        if n_str not in self.coefficients:
-            raise ValueError(
-                f"Коэффициенты для n={self.sample_size} не найдены. "
-                f"Доступные размеры: {list(self.coefficients.keys())}"
-            )
-        if key not in self.coefficients[n_str]:
-            raise ValueError(
-                f"Коэффициент {key} не найден для n={self.sample_size}. "
-                f"Доступные: {list(self.coefficients[n_str].keys())}"
-            )
-        return self.coefficients[n_str][key]
     
     def _setup_style(self):
         """
@@ -156,7 +82,7 @@ class BaseControlChart(ABC):
         к безопасным настройкам matplotlib.
         """
         try:
-            from src.utils.plot_style import apply_minimal_latex_style
+            from nonparametric_charts.utils.plot_style import apply_minimal_latex_style
         except ImportError:
             apply_minimal_latex_style = None
 
@@ -300,22 +226,17 @@ class BaseControlChart(ABC):
         label_cl, label_ucl, label_lcl : str
             Метки для линий
         """
-        ax.axhline(y=cl, color='green', linestyle='-', 
-                   linewidth=2, label=f'{label_cl} = {cl:.3f}')
-        ax.axhline(y=ucl, color='red', linestyle='--', 
-                   linewidth=2, label=f'{label_ucl} = {ucl:.3f}')
-        ax.axhline(y=lcl, color='red', linestyle='--', 
-                   linewidth=2, label=f'{label_lcl} = {lcl:.3f}')
+        hline(ax, cl, "center", label=f'{label_cl} = {cl:.3f}')
+        hline(ax, ucl, "limit", label=f'{label_ucl} = {ucl:.3f}')
+        hline(ax, lcl, "limit", label=f'{label_lcl} = {lcl:.3f}')
     
     def _add_zones(self, ax, cl: float, ucl: float, lcl: float):
         """
         Добавление зон Вестерн-Электрик
-        
-        Зоны:
-        - Зона A: ±2σ до ±3σ (желтая)
-        - Зона B: ±1σ до ±2σ (оранжевая)
-        - Зона C: центр до ±1σ (светло-зеленая)
-        
+
+        Зоны заливаются сдержанным серым (``ZONE_FILL``) и разделяются
+        тонкими линиями (``ZONE_LINE``); пёстрые цвета не используются.
+
         Parameters:
         -----------
         ax : matplotlib.axes.Axes
@@ -332,11 +253,20 @@ class BaseControlChart(ABC):
         
         zone_width = (ucl - cl) / 3
         
-        ax.axhspan(cl + 2*zone_width, ucl, alpha=0.1, color='yellow', label='Зона A (2σ…3σ)')
-        ax.axhspan(lcl, cl - 2*zone_width, alpha=0.1, color='yellow')
-        ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.1, color='orange', label='Зона B (1σ…2σ)')
-        ax.axhspan(cl - 2*zone_width, cl - zone_width, alpha=0.1, color='orange')
-        ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.1, color='lightgreen', label='Зона C (0…1σ)')
+        ax.axhspan(cl + 2*zone_width, ucl, alpha=0.5, color=ZONE_FILL,
+                   zorder=0)
+        ax.axhspan(lcl, cl - 2*zone_width, alpha=0.5, color=ZONE_FILL,
+                   zorder=0)
+        ax.axhspan(cl + zone_width, cl + 2*zone_width, alpha=0.5,
+                   color=ZONE_FILL, zorder=0)
+        ax.axhspan(cl - 2*zone_width, cl - zone_width, alpha=0.5,
+                   color=ZONE_FILL, zorder=0)
+        ax.axhspan(cl - zone_width, cl + zone_width, alpha=0.5,
+                   color=ZONE_FILL, zorder=0)
+        for level in (cl + zone_width, cl + 2*zone_width,
+                      cl - zone_width, cl - 2*zone_width):
+            ax.axhline(level, color=ZONE_LINE, linestyle=":", linewidth=0.8,
+                       zorder=1)
     
     def _add_values_on_points(self, ax, x_values: np.ndarray, y_values: np.ndarray,
                              cl: float, ucl: float, lcl: float,
@@ -344,13 +274,10 @@ class BaseControlChart(ABC):
                              offset: tuple = (0, 0.05)):
         """
         Добавление значений на точки графика
-        
-        Цветовая кодировка:
-        - Красный: вне контрольных границ
-        - Темно-оранжевый: в зоне A (2σ-3σ)
-        - Оранжевый: в зоне B (1σ-2σ)
-        - Темно-зеленый: в зоне C (0-1σ)
-        
+
+        Цветовая кодировка сдержанная: ``ALERT`` — вне контрольных границ,
+        ``INK`` — остальные точки (без деления по зонам).
+
         Parameters:
         -----------
         ax : matplotlib.axes.Axes
@@ -367,28 +294,12 @@ class BaseControlChart(ABC):
             Смещение текста (dx, dy)
         """
         dx, dy = offset
-        zone_width = (ucl - cl) / 3 if ucl > cl else 1
         
         for x, y in zip(x_values, y_values):
-            # Определение зоны для цвета
-            if y > ucl or y < lcl:
-                color = 'red'
-                weight = 'bold'
-            elif y > cl + 2*zone_width or y < cl - 2*zone_width:
-                color = 'darkorange'
-                weight = 'bold'
-            elif y > cl + zone_width or y < cl - zone_width:
-                color = 'orange'
-                weight = 'normal'
-            else:
-                color = 'darkgreen'
-                weight = 'normal'
-            
+            color = ALERT if (y > ucl or y < lcl) else INK
             ax.text(x + dx, y + dy, value_format.format(y),
-                   fontsize=fontsize, color=color, fontweight=weight,
-                   ha='center', va='bottom' if dy >= 0 else 'top',
-                   bbox=dict(boxstyle='round,pad=0.2',
-                           facecolor='white', edgecolor='none', alpha=0.7))
+                   fontsize=fontsize, color=color,
+                   ha='center', va='bottom' if dy >= 0 else 'top')
     
     def check_western_electric_rules(self, values: np.ndarray, 
                                      cl: float, ucl: float, lcl: float) -> List[Dict]:

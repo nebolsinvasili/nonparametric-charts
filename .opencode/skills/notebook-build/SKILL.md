@@ -26,14 +26,15 @@ description: Собрать или обновить ноутбук анализ�
    ```python
    import sys; sys.path.append('..')
    import numpy as np, pandas as pd
-   from src.utils.plot_style import apply_minimal_latex_style
+   from nonparametric_charts.utils.plot_style import apply_minimal_latex_style
    apply_minimal_latex_style()
    ```
 
 4. **Формулы.** Каждую ключевую формулу дай дважды: в markdown (`$$...$$`) и в
    коде (строка из `src/`). Кириллицу — вне `$...$`.
 5. **Данные/коэффициенты.** `'../data/data.csv'`, коэффициенты
-   `'../src/utils/coefficients.json'`. Логику не дублировать — вызывать `src/`.
+   `'../src/nonparametric_charts/utils/coefficients.json'`. Логику не дублировать —
+   вызывать код из пакета `nonparametric_charts`.
 6. **Графики.** Стиль из `plot_style`; подписи и легенды по-русски.
 7. **Проверка.** Численный пример сверь с примером/таблицей из книги; расхождения
    разбери. При необходимости открой раздел через `book-lookup page <стр>`.

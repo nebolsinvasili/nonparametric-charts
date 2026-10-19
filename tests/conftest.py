@@ -1,13 +1,13 @@
-"""
-Общие фикстуры и настройка окружения для тестов nonparametric-charts.
+"""Общие фикстуры и настройка окружения для тестов кода nonparametric-charts.
 
 Проект запускается из корня репозитория (см. AGENTS.md), поэтому:
-- корень репозитория добавляется в sys.path для абсолютных импортов src.*;
+
+- каталог ``src`` добавляется в ``sys.path``, чтобы пакет ``nonparametric_charts``
+  импортировался и без установки (pip/poetry install делают то же самое);
 - matplotlib переключается в безголовый backend (Agg) для тестов графиков.
 
-Тесты организованы по примерам из книги Чакраборти и Грэма (2019):
-один файл — один пример. Построенные карты сохраняются в ``results/tests``
-с указанием номера примера в имени файла (см. фикстуру ``results_dir``).
+Здесь только тесты *кода* библиотеки. Проверка примеров из книги (с консольным
+выводом и графиками) вынесена в ``examples/``.
 """
 
 import sys
@@ -17,26 +17,12 @@ import matplotlib
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 matplotlib.use("Agg")
-
-# Файл коэффициентов Шухарта (репозиторий-относительный путь). Для
-# непараметрических карт коэффициенты не используются, но файл является
-# частью базовой инфраструктуры nonparametric-charts (BaseControlChart).
-COEFFICIENTS_FILE = ROOT / "src" / "utils" / "coefficients.json"
-
-# Каталог для карт, построенных в тестах.
-RESULTS_DIR = ROOT / "results" / "tests"
-
-
-@pytest.fixture(scope="session")
-def results_dir() -> Path:
-    """Каталог ``results/tests`` для сохранения карт из тестов."""
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    return RESULTS_DIR
 
 
 @pytest.fixture(autouse=True)
