@@ -511,7 +511,9 @@
     движок явно сообщает о бесконечной ARL, а не возвращает «магическое» число.
   - API: функции `cusum_*_run_length`, результат `RunLengthResult`
     (`arl`, `sdrl`, `mrl`, `percentiles`, `pmf`, `cdf`, `n_states`, `summary()`);
-    методы `run_length()` у `CusumSignChart` и `CusumSignedRankChart`.
+    методы `run_length()`, `design_h()`, `design_kh()`, `plot_run_length()`
+    у `CusumSignChart` и `CusumSignedRankChart`; визуализация —
+    `utils.plotting.plot_run_length` (PMF + CDF, экспорт из `utils`).
   - Следующие движки (симуляция, интегральное уравнение) реализуются
     **независимо** и сверяются с марковским; приближения — только как
     справочная проверка (этап 3b).

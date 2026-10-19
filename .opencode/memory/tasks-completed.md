@@ -793,3 +793,18 @@
   подбор под 500 даёт `k=39, h=16`.
 - Далее: 3b.8 — API/интеграция; 3b.9 — тесты/производительность;
   3b.10 — кросс-валидация Python↔R.
+
+### 2026-10-19 — этап 3b.8: API и визуализация RL
+
+- `utils/plotting.py`: библиотечный `plot_run_length` — PMF (`ACCENT`,
+  столбики + точки) и CDF (`INK`, ступень) на двойной оси, `max_t`,
+  `show_cdf`, `show_stats`, `usetex`, `save_path`, возврат `(fig, ax)`.
+- Методы `plot_run_length()` у `CusumSignChart` (с `p`) и
+  `CusumSignedRankChart`; экспорт из `nonparametric_charts.utils`.
+- `examples/_common.py::plot_run_length` — тонкая обёртка над библиотечной
+  функцией (прежняя подпись сохранена), дублирование кода убрано.
+- Тесты: `tests/test_plotting.py` (+9).
+- Проверка: `pytest -q` → **217 passed** (было 208); `npc examples` →
+  **10/10 OK**.
+- Далее: 3b.9 — тесты/производительность; 3b.10 — кросс-валидация
+  Python↔R.

@@ -13,8 +13,9 @@
   (знаковые ранги). Сначала **`CUSUM-SN`**, затем **`CUSUM-SR`** — на той же
   архитектуре (решение пользователя, 2026-10-19).
 - **Статус:** ядро обеих карт (SN — фаза 3a, SR — ADR-022) завершено;
-  3b.0–3b.7 (RL, симуляция, renewal, приближения, OC-кривые, подбор `h`,
-  совместный дизайн `(k, h)`) — готово; далее 3b.8 (API/интеграция).
+  3b.0–3b.8 (RL, симуляция, renewal, приближения, OC-кривые, подбор `h`,
+  совместный дизайн `(k, h)`, API/визуализация) — готово; далее 3b.9
+  (тесты/производительность).
 - **Дата начала:** 2026-10-19.
 
 ## Definition of Done
@@ -174,8 +175,12 @@
   Таблица дизайнов и `ARL_OOC(k)` — `experiments/cusum/03_kh_design.py`.
   Amin, Reynolds & Bakir (1995), табл. 5, в книгу не включена (только
   ссылка), поэтому `(k, h)` считаются движком.
-- [ ] **3b.8. API и интеграция.** `RunLengthResult`, `run_length`/`design` у карт,
-  `plot_run_length`, экспорты (частично сделано в 3b.1).
+- [x] **3b.8. API и интеграция.** `RunLengthResult`, методы `run_length`/
+  `design_h`/`design_kh` у карт, `plot_run_length`, экспорты. Сделано:
+  библиотечный `plot_run_length` в `utils/plotting.py` (PMF + CDF, усечение
+  `max_t`, сохранение, единый стиль); методы `plot_run_length()` у
+  `CusumSignChart`/`CusumSignedRankChart`; экспорт из `utils`; примеры
+  используют библиотечную функцию (`examples/_common.py` — тонкая обёртка).
 - [ ] **3b.9. Тесты и производительность.** Инварианты, регрессии на книжные
   числа, бенчмарки `Q`/solve для `n = 10, 20`.
 - [ ] **3b.10. Кросс-валидация Python↔R.** Общие данные/seed'ы, сверка статистик,
@@ -205,10 +210,11 @@
 
 - Код: `src/nonparametric_charts/charts/cusum_sign_chart.py`,
   `src/nonparametric_charts/charts/cusum_signed_rank_chart.py`,
-  `src/nonparametric_charts/utils/statistics.py`
+  `src/nonparametric_charts/utils/statistics.py`,
+  `src/nonparametric_charts/utils/plotting.py` (`plot_run_length`)
 - Тесты: `tests/test_cusum_sign_chart.py`,
   `tests/test_cusum_signed_rank_chart.py`, `tests/test_run_length.py`,
-  `tests/test_run_length_design.py`
+  `tests/test_run_length_design.py`, `tests/test_plotting.py`
 - Примеры: `examples/example_4_{6,7}_cusum_sn_*.py`,
   `examples/example_4_9_cusum_sr.py`,
   `examples/example_4_8_cusum_sn_markov.py`,
@@ -223,6 +229,25 @@
 - Отчёт: `docs/reports/cusum_verification.tex/.pdf` (планируется)
 
 ## Журнал прогресса
+
+### 2026-10-19 — этап 3b.8 (API и визуализация RL)
+
+- `utils/plotting.py`: `plot_run_length(result, *, ax, figsize, title, max_t,
+  show_cdf, show_stats, usetex, save_path)` — PMF (столбики + точки, `ACCENT`)
+  и CDF (ступень, `INK`) на одной фигуре (двойная ось), усечение `max_t`,
+  строка `ARL/SDRL/MRL` в заголовке, пометка «хвост отсечён», сохранение
+  300 dpi; возвращает `(fig, ax)`.
+- Методы `plot_run_length()` у `CusumSignChart` (с `p`) и
+  `CusumSignedRankChart` — используют текущие `k`, `h` карты.
+- Экспорт `plot_run_length` из `nonparametric_charts.utils`.
+- Примеры: `examples/_common.py::plot_run_length` стал тонкой обёрткой над
+  библиотечной функцией (сохранена прежняя подпись `(result, path, title)`);
+  дублирование кода графика убрано.
+- Тесты: `tests/test_plotting.py` (9 тестов) — PMF/CDF, заголовок, `max_t`,
+  ошибки входа, сохранение, готовые оси, методы карт, экспорт.
+- Проверка: `pytest -q` → **217 passed** (было 208; +9); `npc examples` →
+  **10/10 OK**.
+- Далее: 3b.9 (тесты и производительность), 3b.10 (Python↔R).
 
 ### 2026-10-19 — этап 3b.7 (совместный дизайн `(k, h)`, консервативное `h`)
 

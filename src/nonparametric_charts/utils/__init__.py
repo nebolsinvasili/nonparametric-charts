@@ -42,6 +42,7 @@ from nonparametric_charts.utils.run_length_design import (
     signed_rank_step_distribution_shift,
     wald_arl,
 )
+from nonparametric_charts.utils.plotting import plot_run_length
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -98,6 +99,7 @@ __all__ = [
     'design_kh',
     'design_sign_kh',
     'design_signed_rank_kh',
+    'plot_run_length',
     'ACCENT',
     'ALERT',
     'VIOLATION',
