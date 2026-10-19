@@ -721,3 +721,24 @@
 - Проверка: 4.8 — `ARL=16.615`, `SDRL=15.509`, перцентили `2/6/12/23/48`;
   4.10 — `6.809`, `6.106`, `1/2/5/9/19`; `Q` совпадает с табл. 4.11/4.14;
   `npc examples` → **10/10 OK**; `pytest -q` → 153 passed.
+
+### 2026-10-19 — 3b.4–3b.6: приближения, OC-кривые, подбор `h`
+
+- Что сделано:
+  - `utils/run_length_design.py`: распределения `SN`/`SR` при сдвиге
+    (`sign_step_distribution_shift`, `signed_rank_step_distribution_shift`),
+    `oc_curve`, приближения `siegmund_arl`/`wald_arl`/`compare_arl_methods`,
+    `design_h` + `design_sign_h`/`design_signed_rank_h`, `DesignResult`;
+    стандартизованные распределения центрируются по медиане, поэтому IC-ARL
+    не зависит от `F`;
+  - методы `design_h()` у `CusumSignChart`/`CusumSignedRankChart`; экспорты;
+  - `tests/test_run_length_design.py` (26 тестов);
+  - `experiments/cusum/01_oc_curves.py` — таблицы и график OC-кривых SN/SR
+    по распределениям.
+- Решение: для точного решётчатого RL `ARL(h)` ступенчатая, поэтому вместо
+  бисекции/Брента — перебор критических `h` с выбором ближайшей ARL.
+- Проверка: пример 4.8 → `h=4`, `ARL=16.615`; пример 4.10 → `h=6`,
+  `ARL=6.809`; рис. 4.5 → `h=4`, `ARL=460.28`; рис. 4.6 (цель 500) →
+  `h=14`, `ARL=480.60` (книжные `h=24`/`500.30` не воспроизводятся);
+  `pytest -q` → **179 passed**; `npc examples` → **10/10 OK**.
+- Далее: 3b.7 — выбор `k` и совместный дизайн `(k, h)`.

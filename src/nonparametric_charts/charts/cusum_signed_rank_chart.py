@@ -52,6 +52,7 @@ import matplotlib.pyplot as plt
 from nonparametric_charts.base.base_chart import BaseControlChart
 from nonparametric_charts.utils.statistics import signed_rank_details
 from nonparametric_charts.utils.run_length import cusum_signed_rank_run_length
+from nonparametric_charts.utils.run_length_design import design_signed_rank_h
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -424,4 +425,39 @@ class CusumSignedRankChart(BaseControlChart):
         return cusum_signed_rank_run_length(
             self.sample_size, self.k, self.h,
             sided=sided, max_quantile=max_quantile,
+        )
+
+    def design_h(
+        self,
+        target_arl: float,
+        sided: str = 'two',
+        *,
+        max_candidates: int = 5_000,
+    ):
+        """
+        Подобрать ``h`` под номинальную ``ARL`` в IC.
+
+        Parameters
+        ----------
+        target_arl : float
+            Номинальная ``ARL_IC`` (например, 370 или 500).
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        max_candidates : int, default=5000
+            Предохранитель перебора вариантов ``h``.
+
+        Returns
+        -------
+        DesignResult
+            Найденный ``h``, достигнутая ``ARL`` и отклонение от номинала.
+
+        Notes
+        -----
+        ``ARL(h)`` — ступенчатая функция, поэтому номинал может быть
+        недостижим точно; возвращается ближайший вариант. Выбор ``(k, h)``:
+        § 3.2.2, стр. 67; § 4.2.2, стр. 202–203.
+        """
+        return design_signed_rank_h(
+            self.sample_size, target_arl, self.k,
+            sided=sided, max_candidates=max_candidates,
         )

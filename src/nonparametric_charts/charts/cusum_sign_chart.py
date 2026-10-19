@@ -64,6 +64,7 @@ except ImportError:  # fallback: локальная реализация
         return positive - negative
 
 from nonparametric_charts.utils.run_length import cusum_sign_run_length
+from nonparametric_charts.utils.run_length_design import design_sign_h
 
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
@@ -437,4 +438,42 @@ class CusumSignChart(BaseControlChart):
         return cusum_sign_run_length(
             self.sample_size, self.k, self.h,
             sided=sided, p=p, max_quantile=max_quantile,
+        )
+
+    def design_h(
+        self,
+        target_arl: float,
+        sided: str = 'two',
+        *,
+        p: float = 0.5,
+        max_candidates: int = 5_000,
+    ):
+        """
+        Подобрать ``h`` под номинальную ``ARL`` в IC.
+
+        Parameters
+        ----------
+        target_arl : float
+            Номинальная ``ARL_IC`` (например, 370 или 500).
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        p : float, default=0.5
+            ``P(X ≥ μ₀)`` в IC.
+        max_candidates : int, default=5000
+            Предохранитель перебора вариантов ``h``.
+
+        Returns
+        -------
+        DesignResult
+            Найденный ``h``, достигнутая ``ARL`` и отклонение от номинала.
+
+        Notes
+        -----
+        ``ARL(h)`` — ступенчатая функция, поэтому номинал может быть
+        недостижим точно; возвращается ближайший вариант. Выбор ``(k, h)``:
+        § 3.2.2, стр. 67; § 4.2.2, стр. 202–203.
+        """
+        return design_sign_h(
+            self.sample_size, target_arl, self.k,
+            sided=sided, p=p, max_candidates=max_candidates,
         )
