@@ -78,6 +78,9 @@ results/        # сгенерированные артефакты (tests/, exa
 ```
 
 - Проверка примеров: `poetry run python examples/run_all.py` (или по одному).
+- Общие помощники визуализации добавляются **сразу** в
+  `src/nonparametric_charts/utils/plotting.py`; `examples/`, `experiments/`,
+  `notebooks/` используют их как тонкие обёртки и не дублируют код графиков.
 - Тесты кода: `pytest` (каталог `tests/`).
 - Опыты: `experiments/{sn,sr}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
 - Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`,
