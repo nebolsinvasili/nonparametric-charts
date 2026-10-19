@@ -14,12 +14,18 @@ dependencies = [
     "jupyter (>=1.1.1,<2.0.0)"
 ]
 
+# Алиасы запуска: `npc test`, `npc examples`, `npc experiment` (см. cli.py).
+[project.scripts]
+npc = "nonparametric_charts.cli:main"
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-package-mode = false
+# Пакет лежит в src-layout; сборка идёт через poetry-core, поэтому установка
+# работает и командой `poetry install`, и `pip install .` (PEP 517).
+packages = [{ include = "nonparametric_charts", from = "src" }]
 
 [dependency-groups]
 dev = [
