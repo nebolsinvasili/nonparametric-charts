@@ -2,7 +2,7 @@
 
 Chakraborti, S. & Graham, M. A. (2019). *Nonparametric Statistical Process Control*.
 Wiley. ISBN 9781118456033.
-Файл: `docs/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`.
+Файл: `docs/ref/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`.
 
 > **Нумерация страниц.** Печатная страница = PDF-страница − 22
 > (печ. 1 → PDF 23; печ. 167 → PDF 189; печ. 189 → PDF 211). Ниже — **печатные**
@@ -46,4 +46,14 @@ Wiley. ISBN 9781118456033.
 - Для определений FAR/ARL/MRL — раздел 2.1.12 (стр. 39–50).
 - Для Case K/U — раздел 2.1.9 (стр. 37).
 - Вторичный русский источник: В. Н. Клячкин, «Статистические методы в управлении
-  качеством: компьютерные технологии» (`docs/Klyachkin_...pdf`).
+  качеством: компьютерные технологии» (`docs/ref/Klyachkin_...pdf`).
+
+## Рабочие документы карт
+
+Детальные досье и журнал прогресса по картам — `docs/reports/<chart>_plan.md`
+(не авто-подгружается). Текущие:
+
+- CUSUM (§4.2.2, стр. 202–208; примеры §4.3.2, стр. 229–243) —
+  `docs/reports/cusum_plan.md`. Реализованы `CusumSignChart` (CUSUM-SN,
+  §4.2.2.1) и `CusumSignedRankChart` (CUSUM-SR, §4.2.2.4); примеры 4.6/4.7/4.9
+  проверены. Фаза 3b (RL/подбор `h`) — далее.

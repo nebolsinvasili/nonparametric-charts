@@ -1,0 +1,1044 @@
+% !TEX program = pdflatex
+% Анализ, верификация и сопоставление реализации непараметрической
+% знаково-ранговой карты Шухарта (SR) со средствами языка R.
+% Первоисточники: Bakir (2004); Gibbons & Chakraborti (2010);
+% Chakraborti & Graham (2019); Nascimento et al. (2026).
+% Сборка: pdflatex (T2A + babel russian).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{RGB}{46,134,171}   % ACCENT  #2E86AB
+\definecolor{alert}{RGB}{178,34,34}     % ALERT   #B22222
+\definecolor{third}{RGB}{60,110,71}     % PALETTE #3C6E47
+\definecolor{softgray}{RGB}{128,128,128} % CENTER #808080
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  commentstyle=\itshape\color{softgray},
+  keywordstyle=\bfseries,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{softgray},
+  numbers=left,
+  numberstyle=\tiny\color{softgray},
+  numbersep=8pt,
+  columns=fullflexible,
+  keepspaces=true,
+  upquote=true,
+}
+
+\captionsetup{font=small,labelfont=bf}
+\setlist[itemize]{itemsep=1pt,topsep=2pt}
+\setlist[description]{itemsep=1pt,topsep=2pt}
+\emergencystretch=1.5em
+
+\newcommand{\SR}{\mathrm{SR}}
+\newcommand{\FAR}{\mathrm{FAR}}
+\newcommand{\ARL}{\mathrm{ARL}}
+\newcommand{\MRL}{\mathrm{MRL}}
+\newcommand{\FARz}{\mathrm{FAR}_0}
+\newcommand{\SD}{\operatorname{SD}}
+\newcommand{\far}{\mathrm{far}}
+
+\title{\bfseries Непараметрическая знаково-ранговая карта Шухарта (SR):\\
+математические основы, программная реализация,\\
+верификация и сопоставление с языком R}
+\author{Проект \texttt{nonparametric-charts}}
+\date{\today}
+
+% ==================== Координаты графиков (sr_gen_figdata.py) ====================
+\input{sr_macros.tex}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Рассматривается непараметрическая (distribution-free) контрольная карта
+Шухарта, построенная на знаково-ранговой статистике Вилкоксона
+(signed-rank, SR). Документ объединяет математические основы метода,
+описание программной реализации класса \texttt{SignedRankChart},
+сопоставление с доступными реализациями на языке R (пакеты \texttt{npSPC},
+\texttt{qcr} и самодельные скрипты) и вычислительный эксперимент,
+включающий перекрёстную проверку на идентичных данных, проверку
+достигнутого уровня ложных тревог и оценку вероятности обнаружения сдвига.
+Отдельно разобраны расхождения между консервативным правилом границ из книги
+и асимптотическим режимом пакета \texttt{npSPC}.
+\end{abstract}
+
+% ================================================================== %
+\section*{Сокращения}
+\addcontentsline{toc}{section}{Сокращения}
+% ================================================================== %
+Сокращения приведены в исходном (английском) написании, принятом в
+литературе по статистическому управлению процессами; пояснения даны
+по-русски.
+
+\begin{description}[leftmargin=2.8cm,itemsep=1pt]
+  \item[SR] signed-rank statistic --- знаково-ранговая статистика (сумма
+        рангов модулей со знаками отклонений от цели);
+  \item[SN] sign statistic --- знаковая статистика (для сравнения);
+  \item[CL] center line --- центральная линия;
+  \item[UCL, LCL] upper/lower control limit --- верхняя и нижняя контрольные
+        границы;
+  \item[FAR] false alarm rate --- вероятность ложной тревоги на одной
+        подгруппе;
+  \item[ARL] average run length --- средняя длина серии;
+  \item[MRL] median run length --- медианная длина серии;
+  \item[SD] standard deviation --- среднеквадратичное отклонение;
+  \item[IC, OOC] in-control, out-of-control --- управляемое и неуправляемое
+        состояние процесса;
+  \item[$\mu_0$] целевое (референтное) значение центра процесса;
+  \item[DP] dynamic programming --- динамическое программирование
+        (свёртка распределения).
+\end{description}
+
+% ================================================================== %
+\section{Математические основы реализации}
+\label{sec:math}
+% ================================================================== %
+
+\subsection{Знаково-ранговая статистика}
+\label{sec:sr-stat}
+
+Знаково-ранговая карта Шухарта восходит к знаково-ранговому критерию
+Вилкоксона \cite{Wilcoxon1945,Bakir2004} и переносу его на контроль
+процесса \cite{Gibbons2010,Chakraborti2019}. Пусть измерение в подгруппе
+объёма $n$ есть $X_1,\dots,X_n$, а $\mu_0$ --- целевое значение центра
+процесса. Определим ранги модулей отклонений от цели:
+\begin{equation}
+R_j=\operatorname{rank}\bigl(|X_j-\mu_0|\bigr),\qquad j=1,\dots,n,
+\label{eq:rank}
+\end{equation}
+и образуем статистику
+\begin{equation}
+\SR_i=\sum_{j=1}^{n}\operatorname{sign}(X_j-\mu_0)\,R_j
+      =\sum_{R_j:\ X_j>\mu_0} R_j-\sum_{R_j:\ X_j<\mu_0} R_j
+      =2T^+-S,
+\label{eq:sr}
+\end{equation}
+где $T^+=\sum_{j:\,X_j>\mu_0} R_j$ --- сумма рангов положительных
+отклонений, а
+\begin{equation}
+S=\frac{n(n+1)}{2}
+\label{eq:S}
+\end{equation}
+--- максимально возможная сумма рангов. Статистика $\SR$ принимает
+значения $\{-S,-S+2,\dots,S\}$ с шагом $2$, то есть той же чётности, что и
+$S$ (при этом $S$ и $n$ связаны через $n\equiv S\!\pmod 2$ нелинейно).
+
+\paragraph{Ключевое допущение (симметрия распределения).} В отличие от
+знаковой карты, для которой достаточно непрерывности $F$, знаково-ранговая
+карта требует, чтобы в управляемом состоянии распределение $F$ было
+\emph{непрерывным и симметричным} относительно $\mu_0$ (класс Case~K в
+терминологии книги \cite[гл.~4]{Chakraborti2019}). Именно симметрия
+обеспечивает одинаковую вероятность знаков при заданном модуле отклонения,
+а значит --- равновероятность всех $2^n$ знаковых наборов и
+distribution-free свойство $\SR$. Для несимметричных распределений карта
+неприменима; в таких случаях следует использовать знаковую карту (SN) или
+другие методы.
+
+\subsection{Распределение и моменты}
+\label{sec:sr-dist}
+
+При выполнении допущения симметрии и при $\mu_0$, равном центру, знаки
+$s_j=\operatorname{sign}(X_j-\mu_0)$ независимы и равновероятны, а
+$\SR=\sum_{j=1}^{n}s_j\,j$. Поэтому
+\begin{equation}
+P(\SR=v)=\frac{1}{2^n}\,\#\Bigl\{s\in\{-1,+1\}^n:\ \textstyle\sum_j s_j\,j=v\Bigr\}.
+\label{eq:dist}
+\end{equation}
+Прямое перечисление всех $2^n$ знаковых наборов быстро становится
+неосуществимым ($n\ge22$). В реализации распределение строится
+\emph{динамическим программированием} (свёрткой): обозначив $c_j(v)$ число
+наборов из первых $j$ рангов с суммой $v$, имеем
+\begin{equation}
+c_0(0)=1,\qquad
+c_j(v)=c_{j-1}(v-j)+c_{j-1}(v+j),\qquad
+P(\SR=v)=\frac{c_n(v)}{2^n}.
+\label{eq:dp}
+\end{equation}
+Сложность $O(n\cdot S)$ вместо $O(2^n n)$; при $n=30$ ($S=465$) это доли
+миллисекунды. Моменты распределения известны точно
+\cite[с.~200, табл.~4.3]{Chakraborti2019}:
+\begin{equation}
+E[\SR]=0,\qquad
+\SD(\SR)=\sqrt{\frac{n(n+1)(2n+1)}{6}}.
+\label{eq:sd}
+\end{equation}
+Например, $\SD(\SR)\big|_{n=16}=\sqrt{1496}\approx38.68$.
+
+\subsection{Контрольные границы и правило сигнала}
+\label{sec:sr-limits}
+
+Границы карты симметричны и задаются одной константой $a$:
+\begin{equation}
+\mathrm{UCL}=+a,\qquad \mathrm{CL}=0,\qquad \mathrm{LCL}=-a,
+\qquad 1\le a\le S .
+\label{eq:limits}
+\end{equation}
+Процесс признаётся неуправляемым (сигнал), если
+\begin{equation}
+|\SR_i|\ge a .
+\label{eq:signal}
+\end{equation}
+При симметричном распределении $\SR$ двусторонняя вероятность ложной
+тревоги равна
+\begin{equation}
+\FAR(a)=2\,P(\SR\ge a),\qquad
+\ARL=\frac{1}{\FAR},\qquad
+\MRL=\left\lceil \frac{\ln 0.5}{\ln(1-\FAR)}\right\rceil .
+\label{eq:far}
+\end{equation}
+Отраслевой стандарт --- $\FARz=0.0027$, что соответствует трёхсигмовым
+границам нормального распределения.
+
+\subsection{Методы выбора константы $a$}
+\label{sec:methods}
+
+Книжное правило \cite[с.~198, Note~4.2]{Chakraborti2019} ---
+\emph{точное} (консервативное):
+\begin{equation}
+a_{\mathrm{exact}}=\min\bigl\{\,a:\ 1\le a\le S,\ a\equiv S\ (\mathrm{mod}\ 2),\
+P(\SR\ge a)\le \FARz/2 \,\bigr\},
+\label{eq:cons}
+\end{equation}
+с запасным значением $a=S$, если условие не выполняется ни при каком $a$.
+Такое $a$ всегда существует как значение $\SR$, а достигнутый FAR не
+превосходит $\FARz$: $\FAR(a_{\mathrm{exact}})=2P(\SR\ge a_{\mathrm{exact}})
+\le \FARz$.
+
+Библиотека дополнительно реализует два вспомогательных режима, которых в
+книге нет и которые служат для сравнения и обучения.
+
+\paragraph{Нормальная аппроксимация.} Граница берётся по
+нормальному приближению распределения $\SR$:
+\begin{equation}
+a_{\mathrm{norm}}=\min\bigl\{\,a:\ 1\le a\le S,\ a\equiv S\ (\mathrm{mod}\ 2),\
+a\ge z_{1-\FARz/2}\,\SD(\SR)\,\bigr\},
+\label{eq:sym}
+\end{equation}
+где $z_{1-\FARz/2}=z_{0.99865}\approx2.9999$ --- квантиль стандартного
+нормального закона, $\SD(\SR)$ --- из \eqref{eq:sd}. Это асимптотический по
+природе метод: при малых $n$ он совпадает с точным, а с ростом $n$
+может давать \emph{более широкую} границу, поэтому достигнутый FAR не
+обязан быть не больше $\FARz$. Режим воспроизводит границы
+\texttt{npSPC::Limits\_asymptotical} (см.~разделы~\ref{sec:npspc}
+и~\ref{sec:disc}).
+
+\paragraph{Ближайший.} Минимизируется расстояние до номинального уровня
+$\alpha$ (по умолчанию $\alpha=0.05$):
+\begin{equation}
+a_{\mathrm{near}}=\arg\min_{1\le a\le S}\bigl|\,2P(\SR\ge a)-\alpha\,\bigr|.
+\label{eq:near}
+\end{equation}
+Гарантии $\FAR\le\FARz$ нет; режим приводится исключительно для полноты
+картины и в производстве не применяется.
+
+\begin{table}[htbp]\centering
+\caption{Режимы выбора константы $a$.}
+\label{tab:srmodes}
+\small
+\begin{tabular}{@{}p{2.5cm} p{3.1cm} p{7.4cm} p{1.5cm}@{}}
+\toprule
+Режим & Целевой риск & Правило & Чёт\-ность \\
+\midrule
+\texttt{exact} & $\FARz/2=0.00135$ & наименьшее достижимое $a$ с
+$P(\SR\ge a)\le\FARz/2$ & да\\
+\texttt{normal} & $z_{1-\FARz/2}\SD(\SR)$ & наименьшее достижимое
+$a\ge z_{1-\FARz/2}\SD(\SR)$ & да\\
+\texttt{nearest} & $\alpha=0.05$ & $\arg\min_a|2P(\SR\ge a)-\alpha|$ & нет\\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.86\textwidth, height=6.4cm,
+  xlabel={$n$}, ylabel={константа $a$},
+  xmin=2, xmax=20, ymin=0, ymax=170,
+  legend pos=north west, legend cell align=left,
+  title={Границы по режимам}]
+\addplot+[mark=*,mark size=1.3pt,color=accent] coordinates {\vSRACons};
+\addlegendentry{\texttt{exact} (книга)}
+\addplot+[mark=square*,mark size=1.3pt,color=third] coordinates {\vSRASym};
+\addlegendentry{\texttt{normal} (норм.\ аппр.)}
+\addplot+[mark=triangle,mark size=1.5pt,color=alert] coordinates {\vSRANear};
+\addlegendentry{\texttt{nearest} ($\alpha=0.05$)}
+\end{axis}
+\end{tikzpicture}
+\caption{Зависимость константы $a$ от объёма подгруппы $n$.
+\texttt{exact} и \texttt{normal} совпадают при $n\le10$ и
+расходятся далее; \texttt{nearest} систематически даёт самые узкие границы.}
+\label{fig:modesa}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.86\textwidth, height=6.2cm,
+  xlabel={$n$}, ylabel={достигнутый $\FAR$},
+  xmin=2, xmax=20, ymin=0, ymax=0.06,
+  legend pos=north east, legend cell align=left,
+  title={Достигнутый уровень ложных тревог}]
+\addplot+[mark=*,mark size=1.3pt,color=accent] coordinates {\vSRFARCons};
+\addlegendentry{\texttt{exact}}
+\addplot+[mark=square*,mark size=1.3pt,color=third] coordinates {\vSRFARSym};
+\addlegendentry{\texttt{normal}}
+\addplot+[mark=triangle,mark size=1.5pt,color=alert] coordinates {\vSRFARNear};
+\addlegendentry{\texttt{nearest}}
+\addplot[dashed,color=softgray,domain=2:20] {0.0027};
+\addlegendentry{$\FARz=0.0027$}
+\end{axis}
+\end{tikzpicture}
+\caption{Достигнутый $\FAR$ по режимам. Точный режим держится ниже
+$\FARz$; нормальная аппроксимация при $n\ge11$ уходит ниже (граница шире);
+\texttt{nearest} колеблется около $\alpha=0.05$.}
+\label{fig:modesfar}
+\end{figure}
+
+\begin{table}[htbp]\centering
+\caption{Сравнение режимов, $n=2..20$ ($\FARz=0.0027$, $\alpha=0.05$).}
+\label{tab:srmodecmp}
+\small
+\begin{tabular}{@{}rrrrrrr@{}}
+\toprule
+$n$ & $a_{\mathrm{exact}}$ & $\FAR_{\mathrm{exact}}$ & $a_{\mathrm{norm}}$
+& $\FAR_{\mathrm{norm}}$ & $a_{\mathrm{near}}$ & $\FAR_{\mathrm{near}}$\\
+\midrule
+\vSRModeTable
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\paragraph{Пример ($n=14$, $S=105$).} Рассмотрим три режима подробнее.
+\begin{itemize}
+\item \emph{Точный.} Условие $P(\SR\ge a)\le0.00135$ впервые
+выполняется при $a=91$: $P(\SR\ge91)=0.001160$, тогда как $a=93$ даёт
+$0.000854$, а $a=89$ уже $0.001526>0.00135$. Наименьшее достижимое ---
+$a=91$ ($\FAR=0.002319$, $\ARL\approx431$).
+\item \emph{Нормальная аппроксимация.} $\SD(\SR)=\sqrt{1015}\approx31.86$, откуда
+$z_{1-0.00135}\cdot31.86\approx95.6$; ближайшее достижимое значение (той же
+чётности, что и $S=105$) --- $a=97$ ($\FAR=0.000854$, $\ARL\approx1171$).
+Асимптотическая граница здесь шире точной.
+\item \emph{Ближайший.} Минимум $|2P(\SR\ge a)-0.05|$ достигается при
+$a=62$ (и эквивалентном $a=63$): $2P\approx0.0494$.
+\end{itemize}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.86\textwidth, height=6.0cm,
+  xlabel={$a$}, ylabel={$2\,P(|\SR|\ge a)$},
+  xmin=40, xmax=80, ymin=0, ymax=0.24,
+  title={Критерий \texttt{nearest}, $n=14$}]
+\addplot+[mark=*,mark size=1.2pt,color=accent] coordinates {\vSRNearAbs14};
+\addplot+[mark=square*,mark size=2.6pt,color=alert] coordinates {\vSRNearMin14};
+\addplot[dashed,color=softgray,domain=40:80] {0.05};
+\end{axis}
+\end{tikzpicture}
+\caption{Функция $2P(|\SR|\ge a)$ для $n=14$. Ромбом отмечен минимум
+отклонения от $\alpha=0.05$ (значения $a=62$ и $a=63$ дают одинаковую
+вероятность, так как $\SR$ чётности $S$).}
+\label{fig:modesnear}
+\end{figure}
+
+Для иллюстрации распределения на рисунке~\ref{fig:srpmf} приведена
+дискретная плотность $\SR$ при $n=5$, а на рисунке~\ref{fig:srtail} ---
+односторонние хвосты $P(\SR\ge a)$ при различных $n$.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.8\textwidth, height=5.8cm,
+  xlabel={значение $\SR$}, ylabel={$P(\SR=v)$},
+  xmin=-16, xmax=16, ymin=0, ymax=0.11,
+  ybar, bar width=4pt,
+  title={Распределение $\SR$ в IC, $n=5$ ($2^5=32$ набора)}]
+\addplot+[mark=none,color=accent,fill=accent!45] coordinates {\vSRpmfFive};
+\end{axis}
+\end{tikzpicture}
+\caption{Распределение знаково-ранговой статистики при $n=5$: симметрично,
+сосредоточено на значениях чётности $S=15$.}
+\label{fig:srpmf}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.86\textwidth, height=6.2cm,
+  xlabel={$a$}, ylabel={$P(\SR\ge a)$},
+  xmode=log, log basis x=10,
+  ymin=0, ymax=0.5, legend pos=north east, legend cell align=left]
+\addplot+[mark=*,mark size=1pt,color=accent] coordinates {\vSRTailFive};
+\addlegendentry{$n=5$}
+\addplot+[mark=square*,mark size=1pt,color=third] coordinates {\vSRTailTen};
+\addlegendentry{$n=10$}
+\addplot+[mark=triangle,mark size=1pt,color=alert] coordinates {\vSRTailFourteen};
+\addlegendentry{$n=14$}
+\addplot+[mark=diamond*,mark size=1pt,color=softgray] coordinates {\vSRTailTwenty};
+\addlegendentry{$n=20$}
+\end{axis}
+\end{tikzpicture}
+\caption{Односторонний хвост $P(\SR\ge a)$ (логарифмическая шкала $a$).
+С ростом $n$ хвост становится круче, а достижимая граница при
+фиксированном $\FARz$ --- всё ближе по относительной вероятности к цели.}
+\label{fig:srtail}
+\end{figure}
+
+\paragraph{Листинг выбора $a$.} Ниже приведён фрагмент
+\texttt{src/nonparametric\_charts/charts/signed\_rank\_chart.py}.
+
+\begin{lstlisting}[language=Python]
+@classmethod
+def _calc_a_exact(cls, n, far0, dist_func):
+    target = far0 / 2
+    S = n * (n + 1) // 2
+    start = 1 if S % 2 == 1 else 2
+    for a in range(start, S + 1, 2):
+        if dist_func(n, a) <= target:
+            return a, 2.0 * dist_func(n, a)
+    return S, 2.0 * dist_func(n, S)   # fallback: widest limits
+
+@classmethod
+def _calc_a_normal(cls, n, far0, dist_func):
+    S = n * (n + 1) // 2
+    z = stats.norm.ppf(1.0 - far0 / 2.0)
+    sd = (n * (n + 1) * (2 * n + 1) / 6.0) ** 0.5
+    a0 = int(np.ceil(z * sd))
+    a = a0 if a0 % 2 == S % 2 else a0 + 1
+    a = min(max(a, 1), S)
+    return a, 2 * dist_func(n, a)
+\end{lstlisting}
+
+\subsection{Контрольные границы и дискретность}
+\label{sec:sr-discrete}
+
+Из--за дискретности $\SR$ достичь номинального $\FARz$ точно, как правило,
+не удаётся: приходится либо округлять границу вверх (расширяя её и занижая
+достигнутый FAR), либо вниз (завышая FAR). Книжное правило
+\eqref{eq:cons} выбирает наименьшее достижимое $a$, при котором
+односторонний хвост ещё не превышает $\FARz/2$, --- это округление вверх и
+гарантия $\FAR\le\FARz$. Нормальная аппроксимация \eqref{eq:sym} такой
+гарантии не даёт, но при больших $n$ становится точнее по вероятности.
+
+% ================================================================== %
+\section{Программная реализация}
+\label{sec:impl}
+% ================================================================== %
+
+\subsection{Общая структура и зависимости}
+\label{sec:impl-struct}
+
+Знаково-ранговая карта реализована классом \texttt{SignedRankChart}
+(\path{src/nonparametric_charts/charts/signed_rank_chart.py}), наследующим базовый класс
+\texttt{BaseControlChart} (\path{src/nonparametric_charts/base/base_chart.py}). Дополнительно
+используются модули \path{src/nonparametric_charts/utils/dataloader.py},
+\path{src/nonparametric_charts/utils/preprocessor.py}, \path{src/nonparametric_charts/utils/plotting.py} и единый
+стиль графиков \path{src/nonparametric_charts/utils/plot_style.py}. Импорты абсолютные
+(\texttt{from nonparametric\_charts.charts...}), запуск --- из корня репозитория; требования
+--- Python $\ge3.14$ и библиотеки \texttt{pandas}, \texttt{numpy},
+\texttt{scipy}, \texttt{matplotlib}. Коэффициенты
+\path{coefficients.json} относятся к параметрическим картам и здесь не
+используются.
+
+Входные данные --- таблица \texttt{pandas.DataFrame}: строка есть подгруппа,
+столбец --- измерение, параметр \texttt{sample\_size} задаёт число
+столбцов (объём подгруппы $n$). Целевое значение $\mu_0$ задаётся явно или
+оценивается медианой всех наблюдений.
+
+\subsection{Класс \texttt{SignedRankChart}: статистика по подгруппам}
+\label{sec:impl-stat}
+
+Метод \texttt{\_calculate\_sr\_for\_row} для каждой подгруппы выполняет
+шаги \eqref{eq:rank}--\eqref{eq:sr}: отбрасывает пропуски, вычисляет
+отклонения $d_j=x_j-\mu_0$, отбрасывает (теоретически невозможные) нули,
+ранжирует $|d_j|$ методом \texttt{average} (учёт ничьих при округлении),
+и возвращает $\SR$, а также суммы рангов $T^+$ (положительных) и
+отрицательных. Результаты собираются в таблицу \texttt{self.subgroups} с
+колонками \texttt{n\_used}, \texttt{positive}, \texttt{negative},
+\texttt{zero}, \texttt{sr}, \texttt{sum\_pos\_ranks},
+\texttt{sum\_neg\_ranks}, \texttt{T\_plus}.
+
+\subsection{Класс \texttt{SignedRankChart}: распределение и константа}
+\label{sec:impl-dist}
+
+Распределение $\SR$ в IC (\texttt{\_sr\_distribution}) строится
+динамическим программированием по рекурсии \eqref{eq:dp} и кэшируется по
+$n$. Функции \texttt{\_p\_sr\_ge\_a} и \texttt{\_p\_abs\_sr\_ge\_a}
+возвращают односторонний хвост $P(\SR\ge a)$ и двустороннюю вероятность
+$P(|\SR|\ge a)$. Метод \texttt{\_calculate\_a\_value} выбирает $a$
+согласно режиму: \texttt{exact}, \texttt{normal} или
+\texttt{nearest} (см.~листинг в~разделе~\ref{sec:methods}). Устаревшие
+идентификаторы \texttt{approach='conservative'} и
+\texttt{approach='symmetric'} принимаются для обратной совместимости с
+предупреждением об устаревании и отображаются на \texttt{exact} и
+\texttt{normal} соответственно (см.~ADR-012 в памяти проекта).
+
+\subsection{Границы, нарушения и визуализация}
+\label{sec:impl-plot}
+
+Метод \texttt{calculate\_limits} формирует статистики по всем подгруппам,
+определяет $a$ (или принимает заданное), записывает границы
+$\mathrm{UCL}=+a$, $\mathrm{CL}=0$, $\mathrm{LCL}=-a$ вместе с
+достигнутым $\FAR$, $\ARL$ и $\MRL$, а затем вызывает
+\texttt{\_find\_violations}, реализующий правило сигнала
+$|\SR_i|\ge a$ \cite[\S4.2.1.2.1, ур.~4.6, с.~198]{Chakraborti2019}.
+Метод \texttt{plot} рисует карту с линией статистики, границами, линией
+$\mathrm{CL}$ и (при \texttt{show\_zones=True}) выделение зон; метод
+\texttt{plot\_comparison} строит семейство кривых $a$-по-$n$ для нескольких
+режимов. Подписи используют русские наименования режимов из
+\texttt{APPROACH\_LABELS}, причём для \texttt{normal} ---
+<<Нормальная аппроксимация>>.
+
+\subsection{Фазы I и II и вычислительная сложность}
+\label{sec:impl-complexity}
+
+Реализация поддерживает обе фазы: в фазе~I целевое значение и границы
+оцениваются по данным, в фазе~II используются зафиксированные значения; для
+этого \texttt{calculate\_limits} принимает явное \texttt{a\_value}, а
+$\mu_0$ --- параметр конструктора. Основные затраты --- ранжирование по
+подгруппам ($O(m\,n\log n)$ при $m$ подгруппах) и построение
+распределения $\SR$ ($O(n\cdot S)$, однократно на каждое $n$). Благодаря
+ДП-свёртке распределение доступно и при $n\ge30$, где перебор $2^n$
+неосуществим.
+
+\begin{table}[htbp]\centering
+\caption{Ориентировочное время работы ($n=16$, если не указано иное).}
+\label{tab:timing}
+\small
+\begin{tabular}{@{}l r@{}}
+\toprule
+Операция & Время \\
+\midrule
+Наш расчёт границ, 1000 раз ($n=16$) & $\approx0.39$~с \\
+Правило \texttt{npSPC} exact, 1000 раз ($n=16$) & $\approx0.32$~с \\
+Распределение $\SR$ ДП-свёрткой, $n=30$ & $\approx0.002$~с \\
+Обработка $10^6$ подгрупп векторно & $\approx0.52$~с \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+% ================================================================== %
+\section{Реализации на языке R}
+\label{sec:r}
+% ================================================================== %
+
+\subsection{Пакет \texttt{npSPC}}
+\label{sec:npspc}
+
+Пакет \texttt{npSPC} \cite{Nascimento2026} содержит функцию
+\texttt{shewhart\_sr\,(X, mu0, far, group\_by\_col, exact, side)}.
+Статистика вычисляется так же, как в \eqref{eq:sr}:
+\begin{lstlisting}[language=R]
+Ranks = apply(abs(X - mu0), 2, rank)
+Tplus = colSums(apply((X - mu0) > 0, 2, ifelse, 1, 0) * Ranks, na.rm = T)
+SR    = 2*Tplus - n*(n+1)/2
+\end{lstlisting}
+Существенные особенности:
+\begin{itemize}
+\item матрица данных ориентирована <<строка --- наблюдение внутри подгруппы,
+столбец --- подгруппа>> (при \texttt{group\_by\_col=TRUE} выполняется
+транспонирование);
+\item параметр \texttt{far} при \texttt{side="two.sided"} делится пополам:
+\texttt{alpha=far/2};
+\item при \texttt{exact=FALSE} (по умолчанию) границы берутся из
+\texttt{Limits\_asymptotical}:
+$\mathrm{UCL}=z_{1-\alpha}\,\SD(\SR)$ --- \emph{дробное} число, без
+приведения к достижимому значению $\SR$; при $n<20$ печатается
+предупреждение о желательности точного режима;
+\item при \texttt{exact=TRUE} вызывается \texttt{Exact\_distribution}:
+строится распределение $\SR$ перебором $2^n$ наборов, затем
+$\mathrm{UCL}=\min\{u:\ \mathrm{CDF}(u)\ge 1-\alpha,\ u\le S\}$ ---
+это \emph{квантиль} уровня $1-\alpha$ (<<прохождение>> ступеньки CDF), а
+не наименьшее $a$ с $P(\SR\ge a)\le\alpha$.
+\end{itemize}
+Функция возвращает строку с номинальным $\ARL_0=1/\far$, а вычисленные
+границы и статистику лишь передаёт во внутренний \texttt{plot\_chart}.
+
+\subsection{Пакет \texttt{qcr}}
+\label{sec:qcr}
+
+Пакет \texttt{qcr} ориентирован на контрольные карты, в том числе
+непараметрические, однако его непараметрические средства многомерны и
+основаны на глубине данных: функции \texttt{npqcs.*} работают с опорной
+выборкой и глубинами \cite{Liu1995}, а функция \texttt{fdqcs.rank}
+относится к функциональным/ранговым данным. Классической одномерной
+знаково-ранговой карты (по статистике \eqref{eq:sr}) в пакете нет;
+ближайший одномерный инструмент --- атрибутная карта числа несоответствий
+\texttt{qcs.np}, не связанная с Wilcoxon-статистикой. Таким образом,
+\texttt{qcr} не является конкурентом рассматриваемой реализации и
+интересен лишь как источник родственных методов.
+
+\subsection{Реализации средствами базового R}
+\label{sec:baser}
+
+Пользовательские скрипты строятся из \texttt{rank} и \texttt{colSums} и,
+как правило, задают границы по нормальной аппроксимации
+$\pm z_{1-\far/2}\SD(\SR)$:
+\begin{lstlisting}[language=R]
+SR <- 2 * colSums((X - med > 0) * apply(abs(X - med), 2, rank)) - n*(n+1)/2
+a  <- ceiling(qnorm(1 - far / 2) * sqrt(n * (n + 1) * (2 * n + 1) / 6))
+signal <- which(abs(SR) >= a)
+\end{lstlisting}
+Расчёт \path{experiments/sr/sr_custom.R} показывает, что при $n=16$
+нормальная граница ($a=117$) на семь единиц шире точной книжной ($a=110$),
+а при $n=40$ разрыв достигает девяти единиц; при этом из--за чётности
+достигнутый FAR нормальной границы оказывается \emph{ниже} номинального
+(около $0.0010$). Это качественно отличается от знаковой карты, где
+нормальная аппроксимация занижает границу.
+
+% ================================================================== %
+\section{Сопоставление реализаций}
+\label{sec:compare}
+% ================================================================== %
+
+Сводное сопоставление приведено в таблице~\ref{tab:compare}. Ключевые
+наблюдения:
+\begin{itemize}
+\item наша реализация и \texttt{npSPC} дают \emph{идентичную} статистику
+$\SR$ на одних и тех же данных (перекрёстная проверка,
+раздел~\ref{sec:cross});
+\item книжное правило \eqref{eq:cons} и точный режим \texttt{npSPC}
+различаются начинкой: у нас --- точное <<наименьшее достижимое $a$
+с $P(\SR\ge a)\le\far/2$>>, у пакета --- квантиль уровня $1-\far/2$; их
+границы начинают расходиться уже при $n\ge10$ (раздел~\ref{sec:disc});
+\item режим \texttt{normal} (нормальная аппроксимация) воспроизводит
+границы \texttt{npSPC} по умолчанию (\texttt{exact=FALSE}) с точностью до
+приведения к достижимому значению $\SR$;
+\item \texttt{qcr} классической знаково-ранговой карты не предоставляет.
+\end{itemize}
+
+\begin{table}[htbp]\centering
+\caption{Сопоставление реализаций знаково-ранговой карты.}
+\label{tab:compare}
+\footnotesize
+\begin{tabular}{@{}p{2.7cm} p{3.4cm} p{3.7cm} p{4.2cm}@{}}
+\toprule
+Реализация & Статистика & Границы & Особенности \\
+\midrule
+\texttt{SignedRankChart} (наш) & $\SR=2T^+-S$, ранги \texttt{average} &
+три режима: \texttt{exact}, \texttt{normal}, \texttt{near.} &
+учёт чётности $S$; ДП-свёртка; $\mu_0$, фазы I/II \\
+\texttt{npSPC} (\texttt{shewhart\_sr}) & $\SR=2T^+-S$, \texttt{rank} &
+\texttt{exact} (квантиль), асимптотические (дробные) &
+\texttt{far/2}; перебор $2^n$; только фаза~II \\
+Базовый R (самодельный) & $\SR=2T^+-S$ & нормальная аппроксимация &
+без точного распределения, без чётности \\
+\texttt{qcr} & --- & --- & классической SR нет \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+% ================================================================== %
+\section{Вычислительный эксперимент}
+\label{sec:exp}
+% ================================================================== %
+
+Все расчёты воспроизводимы: точные вероятности считаются ДП-свёрткой,
+проверочные опыты --- методом Монте-Карло с фиксированным состоянием
+генератора. Скрипты и инструкции --- в \path{experiments/sr/};
+среда описана в \path{experiments/00_ENVIRONMENT.txt}.
+
+\subsection{Перекрёстная проверка на идентичных данных}
+\label{sec:cross}
+
+По методике \path{sr_cross_validation.R} сгенерирована матрица
+$n=16$, $m=3000$ подгрупп ($N(0,1)$); начиная с подгруппы~2001 введён
+сдвиг центра на $1$ SD. Данные переданы в Python
+(\path{sr_cross_check.py}). Результаты:
+\begin{itemize}
+\item знаково-ранговая статистика $\SR$ полностью совпадает у нашей
+реализации и у \texttt{npSPC} (\texttt{True}) --- ранжирование и формула
+\eqref{eq:sr} идентичны;
+\item точная граница \texttt{npSPC} при $\far=0.0027$ равна $a=108$, наша
+(режим \texttt{exact}) --- $a=110$;
+\item на управляющем участке (2000 подгрупп) граница $108$ дала 5 ложных
+тревог, граница $110$ --- 3, что согласуется с их теоретическими $\FAR$
+($0.0034$ и $0.0027$);
+\item ничьих (\texttt{X==0}) нет --- данные непрерывны.
+\end{itemize}
+
+\subsection{Проверка уровня ложных тревог}
+\label{sec:far}
+
+Опыт Монте-Карло ($n=16$, $m=5\cdot10^5$ управляемых подгрупп)
+подтверждает теорию (таблица~\ref{tab:far}). Эмпирические частоты
+согласуются с точными в пределах стандартной ошибки
+($\sqrt{\FARz(1-\FARz)/m}\approx7\cdot10^{-5}$).
+
+\begin{table}[htbp]\centering
+\caption{Уровень ложных тревог, $n=16$, $m=5\cdot10^5$.}
+\label{tab:far}
+\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Режим & $a$ & $\FAR$ (точный) & $\FAR$ (опыт) & $\ARL$ (опыт) \\
+\midrule
+точный (книга) & 110 & 0.002686 & 0.002778 & 360.0 \\
+нормальная аппроксимация & 118 & 0.001007 & 0.001014 & 986.2 \\
+\texttt{npSPC} exact & 108 & 0.003357 & 0.003444 & 290.4 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\subsection{Мощность при сдвиге}
+\label{sec:power}
+
+Вероятность обнаружения сдвига центра на $\delta\cdot\SD(\SR)$ вычисляется
+двумя способами: напрямую методом Монте-Карло (моделирование данных) и
+свёрткой $\SR=\sum_j s_j j$, где $s_j$ --- знак $j$-й по модулю порядковой
+статистики с вероятностью $q_j$ (формула через плотность нормального
+распределения). Свёртка даёт точное распределение при гипотезе
+независимости ранговых знаков; это приближение, но оно согласуется с
+Монте-Карло в пределах 1--2\,\% (таблица~\ref{tab:power}). Границы
+$a=110$ (точная) и $a=108$ (\texttt{npSPC}) различаются по мощности
+мало: при $\delta=1$ SD выигрыш узкой границы --- около 4 процентных
+пунктов, но ценой повышенного FAR.
+
+\begin{table}[htbp]\centering
+\caption{Вероятность сигнала и $\ARL$, $n=16$ (свёртка).}
+\label{tab:power}
+\small
+\begin{tabular}{@{}r r r r r@{}}
+\toprule
+$\delta$ & $\Phi(\delta)$ & $P$ ($a=110$) & $\ARL$ ($a=110$)
+& $P$ ($a=108$) \\
+\midrule
+0.0 & 0.500 & 0.002686 & 372.3 & 0.003357 \\
+0.5 & 0.691 & 0.086417 & 11.57 & 0.100213 \\
+1.0 & 0.841 & 0.623783 & 1.60 & 0.662585 \\
+1.5 & 0.933 & 0.980478 & 1.02 & 0.985944 \\
+2.0 & 0.977 & 0.999897 & 1.00 & 0.999948 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.86\textwidth, height=6.2cm,
+  xlabel={сдвиг $\delta$ (в $\SD$)}, ylabel={$P(\text{сигнал})$},
+  xmin=0, xmax=2, ymin=0, ymax=1.05,
+  legend pos=south east, legend cell align=left]
+\addplot+[mark=*,mark size=1.4pt,color=accent] coordinates {\vSROCBk};
+\addlegendentry{книга, $a=110$}
+\addplot+[mark=square*,mark size=1.4pt,color=alert] coordinates {\vSROCNp};
+\addlegendentry{\texttt{npSPC} exact, $a=108$}
+\end{axis}
+\end{tikzpicture}
+\caption{Кривые обнаружения сдвига при $n=16$. Более узкая граница пакета
+быстрее реагирует, но при повышенном FAR в управляемом состоянии.}
+\label{fig:oc}
+\end{figure}
+
+\subsection{Анализ расхождений}
+\label{sec:disc}
+
+Причина расхождения книжного правила и точного режима \texttt{npSPC} ---
+разная трактовка дискретности. Книжное правило \eqref{eq:cons} берёт
+\emph{наименьшее достижимое} $a$, для которого односторонний хвост ещё не
+превышает $\FARz/2$ (округление вверх, гарантия $\FAR\le\FARz$). Пакет
+\texttt{npSPC} при \texttt{exact=TRUE} берёт \emph{квантиль} уровня
+$1-\FARz/2$ --- точку, где ступенчатая CDF впервые пересекает уровень
+(округление, эквивалентное выбору значения, при котором хвост может
+\emph{превышать} $\FARz/2$). Поэтому границы пакета уже, а достигнутый FAR
+может быть выше номинального (таблица~\ref{tab:limits}).
+
+\begin{table}[htbp]\centering
+\caption{Границы и достигнутый FAR по правилам.}
+\label{tab:limits}
+\small
+\begin{tabular}{@{}r r r r r r r@{}}
+\toprule
+$n$ & $S$ & книга $a$ & FAR & \texttt{npSPC} exact $a$ & его FAR
+& $\lceil z\SD\rceil$ \\
+\midrule
+10 & 55 & 55 & 0.001953 & 53 & 0.003906 & 59$^{\dagger}$ \\
+12 & 78 & 72 & 0.002441 & 70 & 0.003418 & 77 \\
+14 & 105 & 91 & 0.002319 & 89 & 0.003052 & 96 \\
+16 & 136 & 110 & 0.002686 & 108 & 0.003357 & 117 \\
+18 & 171 & 133 & 0.002335 & 131 & 0.002808 & 138 \\
+20 & 210 & 156 & 0.002325 & 154 & 0.002712 & 161 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\\[2pt]
+{\footnotesize $^{\dagger}$ Последний столбец --- \emph{дробная}
+асимптотическая граница $z\cdot\SD(\SR)$, округлённая вверх. Наша
+реализация затем приводит её к чётности $S$ и зажимает $a\le S$, получая
+эффективную границу \texttt{normal}: $55$, $78$, $97$, $118$, $139$,
+$162$. Пакет \texttt{npSPC} (режим \texttt{exact=FALSE}) такого зажима не
+делает, поэтому при $n=10$ его граница $59>S=55$ недостижима и карта не
+подаёт сигналов вовсе.}
+\end{table}
+
+На рисунке~\ref{fig:limits} сопоставлены границы книжного правила, точного
+режима \texttt{npSPC}, нормальной аппроксимации и нашей реализации. При
+$n\le9$ книжное правило, точный режим \texttt{npSPC} и \texttt{normal}
+совпадают (дискретность вынуждает $a=S$, то есть карта не сигналит при
+номинале); расхождения возникают при $n\ge10$. Асимптотическая граница
+пакета уже при малых $n$ превосходит $S$ и потому недостижима.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.88\textwidth, height=6.4cm,
+  xlabel={$n$}, ylabel={константа $a$},
+  xmin=2, xmax=20, ymin=0, ymax=220,
+  legend pos=north west, legend cell align=left]
+\addplot+[mark=*,mark size=1.2pt,color=accent] coordinates {\vSRACons};
+\addlegendentry{книга (\texttt{exact})}
+\addplot+[mark=square*,mark size=1.2pt,color=third] coordinates {\vSRASym};
+\addlegendentry{\texttt{normal} (норм.\ аппр.)}
+\addplot+[mark=triangle,mark size=1.4pt,color=alert] coordinates {\vSRANpExact};
+\addlegendentry{\texttt{npSPC} exact}
+\addplot+[mark=diamond*,mark size=1.2pt,color=softgray] coordinates {\vSRANpAsym};
+\addlegendentry{\texttt{npSPC} asymptotical}
+\end{axis}
+\end{tikzpicture}
+\caption{Границы $a$ по правилам. Книжное правило лежит между точным
+режимом \texttt{npSPC} (снизу) и нормальной аппроксимацией (сверху);
+асимптотическая граница пакета при малых $n$ уходит выше $S$ и становится
+недостижимой.}
+\label{fig:limits}
+\end{figure}
+
+\paragraph{Замечание об эффективной границе.} Асимптотическая граница
+\texttt{npSPC} --- дробное число, поэтому при сравнении с целочисленной
+статистикой она действует как ближайшее целое сверху. Так, при $n=16$
+$z\cdot\SD\approx116.03$ эквивалентно порогу $117$, а поскольку значения
+$\SR$ имеют чётность $S=136$, условие $|\SR|\ge117$ равносильно
+$|\SR|\ge118$. Именно поэтому режим \texttt{normal} и
+\texttt{npSPC} (\texttt{exact=FALSE}) дают одинаковое множество сигналов,
+хотя формально границы ($118$ и $116.03$) различны.
+
+\subsection{Сводный эксперимент по методам}
+\label{sec:modes}
+
+На одних и тех же данных ($m=3000$, сдвиг $1$ SD с подгруппы~2001) для
+$n=14,16,19$ сопоставлены все режимы (таблица~\ref{tab:modes-exp}). Число
+ложных тревог на управляющем участке и задержка обнаружения сдвига
+подтверждают теоретические $\FAR$.
+
+\begin{table}[htbp]\centering
+\caption{Метрики режимов, $n=16$ ($m=3000$, сдвиг с подгруппы~2001).}
+\label{tab:modes-exp}
+\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Режим & граница & $\FAR$ теор. & ложн.\ тревог & задержка \\
+\midrule
+наша: \texttt{exact} & 110 & 0.002686 & 5 & 1 \\
+наша: \texttt{normal} & 118 & 0.001007 & 3 & 4 \\
+наша: \texttt{nearest} & 75 & 0.050659 & 98 & 1 \\
+нормальная аппроксимация & 116.03 & 0.001007 & 3 & 4 \\
+\texttt{npSPC} exact, \texttt{far}=0.0027 & 108 & 0.003357 & 8 & 1 \\
+\texttt{npSPC} exact, \texttt{far}=0.00135 & 114 & 0.001678 & 4 & 4 \\
+\texttt{npSPC} асимпт., \texttt{far}=0.0027 & 116.03 & 0.001007 & 3 & 4 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\begin{table}[htbp]\centering
+\caption{Границы по режимам для $n=14,16,19$.}
+\label{tab:modes-alln}
+\small
+\begin{tabular}{@{}l r r r@{}}
+\toprule
+Режим & $n=14$ & $n=16$ & $n=19$ \\
+\midrule
+наша \texttt{exact} & 91 & 110 & 144 \\
+наша \texttt{normal} & 97 & 118 & 150 \\
+наша \texttt{nearest} & 62 & 75 & 97 \\
+\texttt{npSPC} exact (0.0027) & 89 & 108 & 142 \\
+\texttt{npSPC} асимпт.\ (0.0027) & 95.58 & 116.03 & 149.10 \\
+\texttt{npSPC} exact (0.00135) & 93 & 114 & 150 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{table}
+
+\paragraph{Что лучше.} Для производственного применения естественен
+точный режим \eqref{eq:cons}: он единственный гарантирует
+$\FAR\le\FARz$ и воспроизводит книжное правило. Режим \texttt{nearest} с
+$\alpha=0.05$ непригоден (в СУП это соответствует $\ARL\approx20$).
+Нормальная аппроксимация (\texttt{normal}) имеет смысл при больших $n$
+как быстрый расчёт и как средство воспроизвести поведение
+\texttt{npSPC} по умолчанию. Точный режим \texttt{npSPC} занимает
+промежуточное положение: он чуть агрессивнее книжного (границы уже, FAR
+может превышать номинал).
+
+% ================================================================== %
+\section{Результаты и рекомендации}
+\label{sec:results}
+% ================================================================== %
+
+\subsection{Преимущества рассматриваемой реализации}
+\label{sec:pros}
+
+Реализация \texttt{SignedRankChart} даёт точную, distribution-free
+статистику \eqref{eq:sr} и совпадает с эталонным пакетом \texttt{npSPC} по
+значениям $\SR$ на идентичных данных, что подтверждено перекрёстной
+проверкой. Распределение статистики строится динамическим
+программированием \eqref{eq:dp}, поэтому доступно при $n\ge30$, где
+перебор $2^n$ в пакете становится неосуществимым; при этом результаты
+эквивалентны полному перечислению. Книжное точное правило
+гарантирует непревышение номинального уровня ложных тревог и снабжено
+запасным значением $a=S$ для малых $n$, где условие $\FAR\le\FARz$
+недостижимо. Реализованы обе фазы, оценка целевого значения по данным и
+явное задание $\mu_0$, а также визуализация с зонами и сравнительные
+графики по $n$. Точный, асимптотический и <<ближайший>> режимы
+позволяют изучать компромисс между ложными тревогами и чувствительностью;
+единый стиль графиков и поддержка устаревших идентификаторов
+обеспечивают совместимость и воспроизводимость. Разумно устроен учёт
+пропусков и ничьих: нулевые и отсутствующие отклонения не искажают
+ранжирование.
+
+\subsection{Направления развития}
+\label{sec:future}
+
+Основное ограничение карты --- требование симметрии распределения; для
+несимметричных процессов необходима знаковая карта или иные подходы, и
+полезно добавить автоматическую диагностику симметрии с рекомендацией
+выбора метода. Целесообразно расширить набор режимов: добавить
+<<квантильный>> вариант с настраиваемым уровнем в духе
+\texttt{npSPC::Exact\_distribution}, чтобы сравнивать точное и
+квантильное округление, а также поддержать точный режим для больших $n$
+через нормальную аппроксимацию с контролем погрешности. Перспективны
+расширения на другие знаково-ранговые статистики (знаково-ранговые суммы
+для сдвига масштаба и знаково-ранговые карты с оцениванием параметров по
+фазе~I), на схемы с переменным объёмом подгруппы и на карты
+EWMA/CUSUM, построенные на $\SR$. Для оценки точности границ при конечных
+$n$ полезна таблица достигнутых $\FAR$/$\ARL$ в приложении. Наконец,
+автоматизация вычислительного эксперимента (единый реестр сценариев с
+повторным прогоном при изменениях) снизила бы трудозатраты и риск
+рассинхронизации отчёта и кода.
+
+% ================================================================== %
+\section{Заключение}
+\label{sec:conclusion}
+% ================================================================== %
+
+Знаково-ранговая карта Шухарта --- непараметрический (distribution-free)
+инструмент контроля сдвига центра, требующий симметрии распределения
+процесса. Построена и верифицирована реализация \texttt{SignedRankChart};
+показано, что её статистика совпадает с эталонной реализацией
+\texttt{npSPC}, а распределение эффективно вычисляется динамическим
+программированием. Установлено, что книжное точное правило и
+квантильный точный режим \texttt{npSPC} различаются трактовкой
+дискретности: первое гарантирует $\FAR\le\FARz$, второй может допускать
+$\FAR>\FARz$. Режим \texttt{normal} (нормальная аппроксимация)
+воспроизводит поведение \texttt{npSPC} по умолчанию и совпадает с ним по
+эффективной границе. Для производственного применения рекомендуется
+точное правило; остальные режимы служат целям сравнения и
+обучения. Направления развития связаны с расширением семейства статистик и
+схем управления, диагностикой симметрии и автоматизацией экспериментов.
+
+% ================================================================== %
+\appendix
+\section{Приложения}
+\label{sec:appendix}
+% ================================================================== %
+
+\paragraph{Воспроизведение.} Все результаты получены скриптами из
+\path{experiments/sr/}; порядок запуска описан в файлах
+\texttt{01}--\texttt{06} той же папки, среда --- в
+\path{experiments/00_ENVIRONMENT.txt}. Перекрёстная проверка:
+\begin{lstlisting}[language=bash]
+R_LIBS=$RENV/lib/R/library $RENV/bin/Rscript experiments/sr/sr_cross_validation.R
+poetry run python experiments/sr/sr_cross_check.py
+\end{lstlisting}
+Точные вероятности, Монте-Карло и время работы:
+\begin{lstlisting}[language=bash]
+poetry run python experiments/sr/sr_analysis.py
+\end{lstlisting}
+Сводный эксперимент по методам (нужен \texttt{npSPC}):
+\begin{lstlisting}[language=bash]
+RSCRIPT=$RENV/bin/Rscript R_LIBS=$RENV/lib/R/library \
+    poetry run python experiments/sr/sr_modes_experiment.py
+\end{lstlisting}
+Координаты графиков отчёта:
+\begin{lstlisting}[language=bash]
+poetry run python experiments/sr/sr_gen_figdata.py > docs/reports/sr_macros.tex
+\end{lstlisting}
+
+\paragraph{Распределение и моменты.} Формула \eqref{eq:sd} для $\SD(\SR)$
+приведена в \cite[с.~200, табл.~4.3]{Chakraborti2019}; правило выбора $a$
+и правило сигнала --- \cite[\S4.2.1.2, с.~196--202]{Chakraborti2019}.
+
+% ================================================================== %
+\begin{thebibliography}{9}
+% ================================================================== %
+
+\bibitem{Amin1995}
+Amin, R.~W., Reynolds~Jr., M.~R., Bakir, S.~T. (1995).
+Nonparametric quality control charts based on the sign statistic.
+\emph{Communications in Statistics: Theory and Methods}, 24(6), 1597--1623.
+
+\bibitem{Bakir2004}
+Bakir, S.~T. (2004).
+A distribution-free Shewhart quality control chart based on signed-ranks.
+\emph{Quality Engineering}, 16(4), 613--623.
+
+\bibitem{Gibbons2010}
+Gibbons, J.~D., Chakraborti, S. (2010).
+\emph{Nonparametric Statistical Inference} (5th ed.). Chapman \& Hall/CRC.
+
+\bibitem{Wilcoxon1945}
+Wilcoxon, F. (1945).
+Individual comparisons by ranking methods.
+\emph{Biometrics Bulletin}, 1(6), 80--83.
+
+\bibitem{Liu1995}
+Liu, R.~Y. (1995).
+Control charts for multivariate processes.
+\emph{Journal of the American Statistical Association}, 90(432), 1380--1387.
+
+\bibitem{Chakraborti2019}
+Chakraborti, S., Graham, M.~A. (2019).
+\emph{Nonparametric Statistical Process Control}. Wiley.
+
+\bibitem{Nascimento2026}
+Nascimento, D.~C., Fons\^eca, A.~O., Fons\^eca, M.~B., Silva, M.~A.~F.,
+Ferreira, P.~H. (2026).
+Nonparametric SPC: Solving complex industrial monitoring tasks with low
+computational cost. \emph{Array}, 30, 100828.
+\url{https://doi.org/10.1016/j.array.2026.100828}.
+
+\bibitem{Flores2021}
+Flores, M., Fern\'andez-Casal, R., Naya, S., Tarr\'io-Saavedra, J. (2021).
+qcr: Quality Control Review. \emph{The R Journal}.
+\url{https://doi.org/10.32614/RJ-2021-034}.
+
+\bibitem{Bakir1979}
+Bakir, S.~T., Reynolds~Jr., M.~R. (1979).
+A nonparametric procedure for process control based on within-group ranking.
+\emph{Technometrics}, 21(2), 175--183.
+
+\end{thebibliography}
+
+\end{document}
