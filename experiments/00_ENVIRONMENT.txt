@@ -1,0 +1,79 @@
+========================================================================
+00. ОКРУЖЕНИЕ И УСТАНОВКА (общее для всех экспериментов)
+========================================================================
+
+Здесь описано, как подготовить окружение. Каждый конкретный эксперимент
+описан в отдельном файле 01..06, где указано, что запускать и чего ожидать.
+
+Обозначения:
+  $REPO  — корень репозитория nonparametric-charts
+  $RENV  — каталог окружения R (например, /tmp/opencode/renv)
+
+------------------------------------------------------------------------
+A. Python-часть
+------------------------------------------------------------------------
+Требуется Python >= 3.14.
+
+  cd $REPO
+  poetry install --with dev
+
+Скрипты сгруппированы по картам:
+  * experiments/sn/ — знаковая карта (SN);
+  * experiments/sr/ — знаково-ранговая карта (SR).
+
+Запуск любого Python-скрипта из корня репозитория:
+
+  poetry run python experiments/<sn|sr>/<скрипт>.py
+
+------------------------------------------------------------------------
+B. Окружение R (без прав суперпользователя)
+------------------------------------------------------------------------
+Используется micromamba (conda-forge). Если micromamba не установлена,
+её можно поставить локально, например:
+
+  curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
+    | tar -xvj bin/micromamba
+
+Создание окружения с R и компилятором Fortran (нужен для сборки qcr):
+
+  micromamba create -p $RENV -c conda-forge r-base gfortran -y
+  micromamba install -p $RENV -c conda-forge -y \
+      r-dplyr r-purrr r-fda r-ks r-nlme r-mgcv r-lattice r-survival \
+      r-mvtnorm r-mass r-matrix r-foreach r-iterators r-doparallel \
+      r-knitr r-ksamples r-suppdists r-goftest
+
+Пакет автора npSPC (репозиторий CER-UFBA/npSPC; Nascimento et al., 2026):
+
+  git clone https://github.com/CER-UFBA/npSPC.git $RENV/npSPC
+  R_LIBS=$RENV/lib/R/library $RENV/bin/R CMD INSTALL $RENV/npSPC
+
+Пакеты из CRAN (стандартная библиотека R). Скачивание через curl,
+затем установка строго в порядке qcc -> fda.usc -> qcr:
+
+  cd /tmp
+  curl -LO https://cloud.r-project.org/src/contrib/qcc_2.7.tar.gz
+  curl -LO https://cloud.r-project.org/src/contrib/fda.usc_2.2.0.tar.gz
+  curl -LO https://cloud.r-project.org/src/contrib/qcr_1.4.tar.gz
+  R_LIBS=$RENV/lib/R/library $RENV/bin/R CMD INSTALL qcc fda.usc qcr
+
+Проверка:
+
+  R_LIBS=$RENV/lib/R/library $RENV/bin/Rscript \
+      -e 'suppressMessages(library(npSPC)); print(sessionInfo())'
+
+------------------------------------------------------------------------
+C. Переменные окружения для R-скриптов
+------------------------------------------------------------------------
+Во всех командах ниже подразумевается:
+
+  R_LIBS=$RENV/lib/R/library
+  RSCRIPT=$RENV/bin/Rscript
+
+Например:
+
+  R_LIBS=$RENV/lib/R/library RSCRIPT=$RENV/bin/Rscript \
+      poetry run python experiments/sn/modes_experiment.py
+
+Файлы, создаваемые экспериментами, складываются рядом со скриптами
+(experiments/sn/ или experiments/sr/).
+Промежуточные CSV-данные (data_*.csv, *_out.csv) в git не коммитятся.

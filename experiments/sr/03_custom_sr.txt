@@ -1,0 +1,23 @@
+========================================================================
+03. SR «с нуля» на базовом R: normal vs exact
+    Скрипт: experiments/sr/sr_custom.R
+    Требуется: только базовый R (пакеты не нужны)
+========================================================================
+
+ЦЕЛЬ
+  Показать расхождение границ normal и exact для SR.
+
+ЧТО ДЕЛАЕТСЯ
+  * sr_chart_custom(X, med, far, method): SR = 2·T+ − S; границы
+    normal a = ceil(z·√(n(n+1)(2n+1)/6)) или exact (ДП-свёртка ±j).
+  * Таблица: n, exact, normal, diff, FAR(normal).
+  * Данные: n = 16, m = 20 000 (IC); FAR при normal и exact.
+
+ЗАПУСК
+  cd $REPO
+  R_LIBS=$RENV/lib/R/library \
+      $RENV/bin/Rscript experiments/sr/sr_custom.R
+
+ОЖИДАЕМОЕ
+  * n = 16: normal a = 117, exact a = 110; эффективная граница 118.
+  * FAR(normal) ≈ 0.0010 — ниже номинала из-за чётности SR.
