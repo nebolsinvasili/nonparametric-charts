@@ -1,0 +1,145 @@
+"""Консольная команда ``npc`` — алиасы запуска проекта nonparametric-charts.
+
+Устанавливается как entry point (``[project.scripts]`` в ``pyproject.toml``),
+поэтому доступна и после ``poetry install``, и после ``pip install .``:
+
+    npc test                 # тесты кода (pytest по tests/)
+    npc test -q              # с аргументами pytest (передаются как есть)
+    npc examples             # проверить все примеры книги (examples/)
+    npc examples 4.1 4.4     # только указанные примеры
+    npc experiment           # запустить анализы SN и SR (experiments/)
+    npc experiment sn        # только SN
+    npc experiment --list    # список скриптов экспериментов
+
+Команда ищет корень репозитория рядом с исходниками (src-layout) или вверх от
+текущего каталога, поэтому запускать её можно из любого места внутри репозитория.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+from typing import List, Optional
+
+
+def _repo_root() -> Path:
+    """Корень репозитория (там, где лежит ``examples/run_all.py``)."""
+    # 1. Рядом с исходниками: <root>/src/nonparametric_charts/cli.py → <root>.
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "examples" / "run_all.py").is_file():
+            return parent
+
+    # 2. Вверх от текущего каталога (если пакет установлен из wheel).
+    cwd = Path.cwd().resolve()
+    for parent in (cwd, *cwd.parents):
+        if (parent / "examples" / "run_all.py").is_file():
+            return parent
+
+    raise SystemExit(
+        "Не найден корень репозитория nonparametric-charts "
+        "(ожидался каталог examples/run_all.py).\n"
+        "Запустите команду из корня репозитория."
+    )
+
+
+def _run(cmd: List[str], cwd: Path) -> int:
+    """Запустить подпроцесс и вернуть его код возврата."""
+    return subprocess.call(cmd, cwd=str(cwd))
+
+
+def cmd_test(pytest_args: List[str]) -> int:
+    """Запустить pytest, передав ему аргументы как есть."""
+    root = _repo_root()
+    return _run([sys.executable, "-m", "pytest", *pytest_args], root)
+
+
+def cmd_examples(args: argparse.Namespace) -> int:
+    root = _repo_root()
+    examples_dir = root / "examples"
+
+    if not args.numbers:
+        return _run([sys.executable, str(examples_dir / "run_all.py")], root)
+
+    rc = 0
+    for number in args.numbers:
+        pattern = f"example_{number.replace('.', '_')}_*.py"
+        matches = sorted(examples_dir.glob(pattern))
+        if not matches:
+            print(f"Пример {number} не найден ({pattern})", file=sys.stderr)
+            rc = 1
+            continue
+        rc |= _run([sys.executable, str(matches[0])], root)
+    return rc
+
+
+def cmd_experiment(args: argparse.Namespace) -> int:
+    root = _repo_root()
+    experiments_dir = root / "experiments"
+
+    if args.list:
+        for path in sorted(experiments_dir.rglob("*.py")):
+            print(path.relative_to(root))
+        return 0
+
+    kinds = ["sn", "sr"] if args.kind == "all" else [args.kind]
+    rc = 0
+    for kind in kinds:
+        script = experiments_dir / kind / f"{kind}_analysis.py"
+        print(f">>> {script.relative_to(root)}", flush=True)
+        rc |= _run([sys.executable, str(script)], root)
+    return rc
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="npc",
+        description="Алиасы запуска nonparametric-charts: "
+                    "тесты, примеры книги, эксперименты.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_test = sub.add_parser("test", help="запустить тесты кода (pytest по tests/)")
+    p_test.set_defaults(func=lambda args: cmd_test([]))
+
+    p_examples = sub.add_parser(
+        "examples", help="проверить примеры книги (examples/)"
+    )
+    p_examples.add_argument(
+        "numbers", nargs="*",
+        help="номера примеров, напр. 4.1 4.4 (по умолчанию все)",
+    )
+    p_examples.set_defaults(func=cmd_examples)
+
+    p_exp = sub.add_parser(
+        "experiment", help="запустить эксперименты (experiments/)"
+    )
+    p_exp.add_argument(
+        "kind", nargs="?", default="all", choices=["sn", "sr", "all"],
+        help="какой анализ запустить (по умолчанию all)",
+    )
+    p_exp.add_argument(
+        "--list", action="store_true",
+        help="показать доступные скрипты экспериментов",
+    )
+    p_exp.set_defaults(func=cmd_experiment)
+
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    # `npc test …` — всё после «test» передаётся pytest как есть (в т.ч. -q и др.),
+    # поэтому эту команду разбираем вручную, минуя argparse.
+    if argv and argv[0] == "test":
+        return cmd_test(argv[1:])
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
