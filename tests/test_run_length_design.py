@@ -296,7 +296,7 @@ def test_design_h_reports_unreachable_nominal() -> None:
     """Для ``n=10, k=6`` номинал 500 недостижим: ``h=4`` даёт ARL ≈ 460."""
     result = design_sign_h(10, 500, 6, sided='two')
     assert result.h == pytest.approx(4.0)
-    assert result.arl == pytest.approx(460.2828, rel=1e-6)
+    assert result.arl == pytest.approx(464.9844, rel=1e-6)
     assert result.relative_error < 0.1
     assert result.note
 
@@ -333,20 +333,21 @@ def test_arl_is_monotone_in_h() -> None:
 
 
 def test_figure_4_5_design() -> None:
-    """Рис. 4.5 (``n=10, k=6``): номинал 500 → ``h=4``, точная ARL ≈ 460.3."""
+    """Рис. 4.5 (``n=10, k=6``): номинал 500 → ``h=4``, точная ARL ≈ 465.0."""
     result = design_sign_h(10, 500, 6, sided='two')
     assert result.h == pytest.approx(4.0)
-    assert result.arl == pytest.approx(460.2828, rel=1e-4)
-    # В книге — 454.24, симуляция 3b.2 — 461.05; расхождение в пределах
-    # ошибки книги/симуляции, код не подгоняется.
-    assert abs(result.arl - 454.24) / 454.24 < 0.02
+    assert result.arl == pytest.approx(464.9844, rel=1e-4)
+    # В книге — 454.24, симуляция 3b.2 — 461.05. После исправления стартового
+    # состояния двусторонней цепи (3b.10) точный расчёт даёт 464.98:
+    # симуляция ближе к нему, чем к книжному значению; код не подгоняется.
+    assert abs(result.arl - 454.24) / 454.24 < 0.03
 
 
 def test_figure_4_6_open_discrepancy() -> None:
     """Рис. 4.6: точный расчёт не воспроизводит книжные 500.30 при h=24.
 
     Это открытое расхождение (см. ``docs/reports/cusum_plan.md``): точная
-    двусторонняя ARL при ``n=10, k=41, h=24`` ≈ 79 500. Подбор под номинал
+    двусторонняя ARL при ``n=10, k=41, h=24`` ≈ 80 600. Подбор под номинал
     500 даёт ``h=14``. Тест фиксирует текущее состояние, а не подгоняет код
     под книгу.
     """
@@ -357,7 +358,7 @@ def test_figure_4_6_open_discrepancy() -> None:
 
     result = design_signed_rank_h(10, 500, 41, sided='two')
     assert result.h == pytest.approx(14.0)
-    assert result.arl == pytest.approx(480.5997, rel=1e-4)
+    assert result.arl == pytest.approx(486.8703, rel=1e-4)
 
 
 def test_design_h_is_monotone_in_nominal() -> None:

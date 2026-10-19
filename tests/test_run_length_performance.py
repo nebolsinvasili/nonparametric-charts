@@ -122,7 +122,7 @@ def test_large_run_length_computation_is_bounded() -> None:
     """Большой ``ARL`` (рис. 4.6) не приводит к неограниченному циклу PMF.
 
     При ``max_quantile = 0.5`` длина PMF ограничена медианой распределения
-    (≈ 55 000 при точном ``ARL ≈ 79 500``), и весь расчёт остаётся быстрым.
+    (≈ 55 000 при точном ``ARL ≈ 80 600``), и весь расчёт остаётся быстрым.
     """
     start = time.perf_counter()
     result = cusum_signed_rank_run_length(

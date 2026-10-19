@@ -362,7 +362,11 @@ def _reachable_two_sided_states(
                 states.add(candidate)
                 queue.append(candidate)
 
-    return sorted(states)
+    # Стартовое состояние обязано быть первым: по нему строится вектор
+    # начального распределения (start[0] = 1). Обычная сортировка кортежей
+    # ставит (0, 0) не первым (состояния с S⁺ = 0 и S⁻ < 0 лексикографически
+    # меньше), поэтому фиксируем порядок явно.
+    return [start, *sorted(states - {start})]
 
 
 def _transition_matrix_upper(
