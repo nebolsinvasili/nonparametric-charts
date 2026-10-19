@@ -6,10 +6,10 @@
 метода **сначала сверяется с книгой**, а не берётся по памяти:
 
 - **Основной источник:**
-  `docs/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`
+  `docs/ref/chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf`
   — Chakraborti, S. & Graham, M. A. (2019). *Nonparametric Statistical Process
   Control*. Wiley. ISBN 9781118456033.
-- **Вторичный (русский):** `docs/Klyachkin_...pdf` — В. Н. Клячкин, «Статистические
+- **Вторичный (русский):** `docs/ref/Klyachkin_...pdf` — В. Н. Клячкин, «Статистические
   методы в управлении качеством: компьютерные технологии».
 
 Если в книге неясно или неполно — идти в **первоисточник**, на который ссылается

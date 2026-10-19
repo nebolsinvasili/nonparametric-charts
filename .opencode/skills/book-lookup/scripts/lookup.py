@@ -28,7 +28,7 @@ import sys
 OFFSET = 22
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
-DEFAULT_PDF = ROOT / "docs" / "chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf"
+DEFAULT_PDF = ROOT / "docs" / "ref" / "chakraborti_s_graham_ma_nonparametric_statistical_process_co.pdf"
 
 
 def extract_pages(pdf: pathlib.Path):
