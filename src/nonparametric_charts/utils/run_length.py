@@ -42,7 +42,7 @@ CUSUM-карт по знакам (CUSUM-SN) и знаковым рангам (CU
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Sequence, Tuple
+from typing import Dict, Iterable, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy import stats
@@ -54,6 +54,9 @@ __all__ = [
     'cusum_run_length',
     'cusum_sign_run_length',
     'cusum_signed_rank_run_length',
+    'simulate_cusum_run_length',
+    'simulate_cusum_sign_run_length',
+    'simulate_cusum_signed_rank_run_length',
 ]
 
 #: Точность, с которой состояния цепи считаются совпадающими.
@@ -607,6 +610,224 @@ def cusum_signed_rank_run_length(
     values, probabilities = signed_rank_step_distribution(n)
     result = cusum_run_length(
         values, probabilities, k, h, sided=sided, max_quantile=max_quantile
+    )
+    result.metadata.update({'n': float(n), 'statistic': 'SR'})
+    return result
+
+
+# --------------------------------------------------------------------------- #
+#  Симуляция (Монте-Карло)
+# --------------------------------------------------------------------------- #
+
+def _empirical_run_length_result(
+    sample: np.ndarray,
+    *,
+    k: float,
+    h: float,
+    sided: str,
+    metadata: Optional[Dict[str, float]] = None,
+) -> RunLengthResult:
+    """Построить ``RunLengthResult`` по выборке длин серий."""
+    sample = np.asarray(sample, dtype=np.int64)
+    count = sample.size
+    if count == 0:
+        raise ValueError('Пустая выборка длин серий')
+
+    arl = float(sample.mean())
+    sdrl = float(sample.std(ddof=1)) if count > 1 else 0.0
+
+    quantiles = (0.05, 0.25, 0.5, 0.75, 0.95)
+    percentiles = {
+        q: int(np.quantile(sample, q, method='inverted_cdf'))
+        for q in quantiles
+    }
+
+    counts = np.bincount(sample, minlength=int(sample.max()) + 1)
+    pmf = counts[1:].astype(float) / count
+    cdf = np.cumsum(pmf)
+
+    result_metadata = {
+        'n_rep': float(count),
+        'standard_error_arl': float(sdrl / np.sqrt(count)),
+    }
+    if metadata:
+        result_metadata.update(metadata)
+
+    return RunLengthResult(
+        arl=arl,
+        sdrl=sdrl,
+        mrl=percentiles[0.5],
+        percentiles=percentiles,
+        pmf=pmf,
+        cdf=cdf,
+        states=np.empty(0, dtype=float),
+        n_states=0,
+        method='simulation',
+        truncated=False,
+        k=float(k),
+        h=float(h),
+        sided=sided,
+        metadata=result_metadata,
+    )
+
+
+def simulate_cusum_run_length(
+    step_values: Sequence[float],
+    step_probabilities: Sequence[float],
+    k: float,
+    h: float,
+    *,
+    sided: str = 'two',
+    n_rep: int = 100_000,
+    seed: Optional[int] = None,
+    max_t: int = 5_000_000,
+) -> RunLengthResult:
+    """
+    Симуляция распределения длины серии CUSUM (Монте-Карло).
+
+    Повторяет алгоритм §4.2.2.3.2 (стр. 205) / §4.2.2.4.3 (стр. 207–208):
+    генерируются статистики ``Z_t`` из заданного распределения, карта
+    обновляется до первого сигнала, номер шага — наблюдение RL.
+
+    Parameters
+    ----------
+    step_values, step_probabilities : sequence[float]
+        Распределение статистики подгруппы.
+    k, h : float
+        Параметры карты.
+    sided : {'upper', 'lower', 'two'}, default='two'
+        Тип карты.
+    n_rep : int, default=100000
+        Число повторов (в книге — 100 000).
+    seed : int, optional
+        Зерно генератора для воспроизводимости.
+    max_t : int, default=5000000
+        Предохранитель от бесконечной серии.
+
+    Returns
+    -------
+    RunLengthResult
+        Эмпирические ``ARL``, ``SDRL``, ``MRL``, перцентили, PMF/CDF;
+        ``metadata['standard_error_arl']`` — стандартная ошибка среднего.
+
+    Notes
+    -----
+    Метод приближённый: ошибка ``ARL`` убывает как ``SDRL/√n_rep``.
+    Эталон — марковский движок :func:`cusum_run_length`.
+    """
+    if k <= 0:
+        raise ValueError(f'Референсное значение k должно быть > 0, получено {k}')
+    if h <= 0:
+        raise ValueError(f'Интервал решения h должно быть > 0, получено {h}')
+    if sided not in {'upper', 'lower', 'two'}:
+        raise ValueError(
+            "sided должен быть 'upper', 'lower' или 'two', "
+            f'получено {sided!r}'
+        )
+    if n_rep < 1:
+        raise ValueError(f'Число повторов должно быть ≥ 1, получено {n_rep}')
+
+    values = np.asarray(step_values, dtype=float)
+    probabilities = np.asarray(step_probabilities, dtype=float)
+    if values.shape != probabilities.shape or values.ndim != 1:
+        raise ValueError('step_values и step_probabilities должны быть '
+                         'одномерными массивами одной длины')
+    if np.any(probabilities < 0):
+        raise ValueError('Вероятности не могут быть отрицательными')
+    total = float(probabilities.sum())
+    if total <= 0:
+        raise ValueError('Сумма вероятностей должна быть > 0')
+    probabilities = probabilities / total
+    mask = probabilities > 0
+    values = values[mask]
+    probabilities = probabilities[mask]
+
+    if sided == 'lower':
+        values = -values
+
+    rng = np.random.default_rng(seed)
+
+    run_lengths = np.zeros(n_rep, dtype=np.int64)
+    upper = np.zeros(n_rep, dtype=float)
+    lower = np.zeros(n_rep, dtype=float)
+    active = np.arange(n_rep)
+    step = 0
+
+    while active.size and step < max_t:
+        step += 1
+        draws = rng.choice(values, size=active.size, p=probabilities)
+
+        if sided == 'two':
+            upper = np.maximum(0.0, upper + draws - k)
+            lower = np.minimum(0.0, lower + draws + k)
+            signal = (upper >= h) | (lower <= -h)
+        elif sided == 'upper':
+            upper = np.maximum(0.0, upper + draws - k)
+            signal = upper >= h
+        else:
+            lower = np.minimum(0.0, lower + draws + k)
+            signal = lower <= -h
+
+        if np.any(signal):
+            run_lengths[active[signal]] = step
+
+        keep = ~signal
+        active = active[keep]
+        upper = upper[keep]
+        lower = lower[keep]
+
+    if active.size:
+        raise RuntimeError(
+            f'За {max_t} шагов не все серии завершились '
+            f'(осталось {active.size} из {n_rep}); проверьте k и h'
+        )
+
+    return _empirical_run_length_result(
+        run_lengths, k=k, h=h, sided=sided,
+        metadata={
+            'seed': float(seed) if seed is not None else -1.0,
+            'step_min': float(values.min()),
+            'step_max': float(values.max()),
+        },
+    )
+
+
+def simulate_cusum_sign_run_length(
+    n: int,
+    k: float,
+    h: float,
+    *,
+    sided: str = 'two',
+    p: float = 0.5,
+    n_rep: int = 100_000,
+    seed: Optional[int] = None,
+    max_t: int = 5_000_000,
+) -> RunLengthResult:
+    """Симуляция RL CUSUM-SN (``Z_t = SN_t``)."""
+    values, probabilities = sign_step_distribution(n, p)
+    result = simulate_cusum_run_length(
+        values, probabilities, k, h,
+        sided=sided, n_rep=n_rep, seed=seed, max_t=max_t,
+    )
+    result.metadata.update({'n': float(n), 'p': float(p), 'statistic': 'SN'})
+    return result
+
+
+def simulate_cusum_signed_rank_run_length(
+    n: int,
+    k: float,
+    h: float,
+    *,
+    sided: str = 'two',
+    n_rep: int = 100_000,
+    seed: Optional[int] = None,
+    max_t: int = 5_000_000,
+) -> RunLengthResult:
+    """Симуляция RL CUSUM-SR в IC (``Z_t = SR_t``)."""
+    values, probabilities = signed_rank_step_distribution(n)
+    result = simulate_cusum_run_length(
+        values, probabilities, k, h,
+        sided=sided, n_rep=n_rep, seed=seed, max_t=max_t,
     )
     result.metadata.update({'n': float(n), 'statistic': 'SR'})
     return result

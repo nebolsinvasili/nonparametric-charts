@@ -22,6 +22,8 @@ from nonparametric_charts.utils.run_length import (
     cusum_signed_rank_run_length,
     sign_step_distribution,
     signed_rank_step_distribution,
+    simulate_cusum_sign_run_length,
+    simulate_cusum_signed_rank_run_length,
 )
 
 BOOK_PERCENTILES = (0.05, 0.25, 0.5, 0.75, 0.95)
@@ -135,6 +137,38 @@ def test_generic_engine_accepts_arbitrary_steps() -> None:
     )
     assert result.arl > 0
     assert result.n_states >= 1
+
+
+# --------------------------------------------------------------------------- #
+#  Симуляция (3b.2)
+# --------------------------------------------------------------------------- #
+
+def test_simulation_matches_example_4_8() -> None:
+    """Монте-Карло согласуется с точным ARL примера 4.8 (в пределах 3 SE)."""
+    result = simulate_cusum_sign_run_length(
+        5, 1, 4, sided='upper', n_rep=20_000, seed=20261019
+    )
+    standard_error = result.metadata['standard_error_arl']
+    assert abs(result.arl - 16.615) < 3 * standard_error
+    assert result.mrl == 12
+
+
+def test_simulation_matches_markov_for_figure_4_5() -> None:
+    """Дизайн рис. 4.5 (n=10, k=6, h=4): симуляция ≈ точная ARL ≈ 460."""
+    exact = cusum_sign_run_length(10, 6, 4, sided='two')
+    simulated = simulate_cusum_sign_run_length(
+        10, 6, 4, sided='two', n_rep=5_000, seed=20261019
+    )
+    standard_error = simulated.metadata['standard_error_arl']
+    assert abs(simulated.arl - exact.arl) < 4 * standard_error
+
+
+def test_simulation_rejects_impossible_chart() -> None:
+    """Симуляция не зависает: невозможный сигнал явно диагностируется."""
+    with pytest.raises(RuntimeError, match='не все серии завершились'):
+        simulate_cusum_signed_rank_run_length(
+            4, 11, 10, sided='upper', n_rep=10, seed=1, max_t=100
+        )
 
 
 # --------------------------------------------------------------------------- #

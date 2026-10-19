@@ -15,6 +15,9 @@ from nonparametric_charts.utils.run_length import (
     cusum_signed_rank_run_length,
     sign_step_distribution,
     signed_rank_step_distribution,
+    simulate_cusum_run_length,
+    simulate_cusum_sign_run_length,
+    simulate_cusum_signed_rank_run_length,
 )
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
@@ -48,6 +51,9 @@ __all__ = [
     'cusum_run_length',
     'cusum_sign_run_length',
     'cusum_signed_rank_run_length',
+    'simulate_cusum_run_length',
+    'simulate_cusum_sign_run_length',
+    'simulate_cusum_signed_rank_run_length',
     'ACCENT',
     'ALERT',
     'VIOLATION',
