@@ -99,3 +99,56 @@ class ExampleReport:
             return 1
         print("ИТОГ: все значения совпали с книгой")
         return 0
+
+
+def plot_run_length(result, path: Path, title: str) -> None:
+    """График распределения длины серии: PMF (столбики) и CDF (ступень)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from nonparametric_charts.utils.plot_style import (
+        ACCENT,
+        INK,
+        apply_minimal_latex_style,
+        despine,
+        math_text,
+    )
+
+    apply_minimal_latex_style()
+    t = np.arange(1, len(result.pmf) + 1)
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ax.vlines(t, 0.0, result.pmf, color=ACCENT, linewidth=1.0)
+    ax.plot(t, result.pmf, 'o', color=ACCENT, markersize=3.0,
+            label=rf'$P(N=t)$')
+
+    ax.set_xlabel(r'$t$ (' + math_text('длина серии') + ')')
+    ax.set_ylabel(r'$P(N=t)$', color=ACCENT)
+    ax.tick_params(axis='y', colors=ACCENT)
+    ax.set_xlim(0.5, t[-1] + 0.5)
+    ax.set_ylim(0.0, max(float(result.pmf.max()) * 1.2, 1e-3))
+
+    ax2 = ax.twinx()
+    ax2.step(t, result.cdf, where='post', color=INK, linewidth=1.2,
+             label=rf'$F(t)=P(N \leq t)$')
+    ax2.set_ylabel(r'$F(t)$', color=INK)
+    ax2.set_ylim(0.0, 1.05)
+
+    lines = ax.get_lines() + ax2.get_lines()
+    ax.legend(lines, [line.get_label() for line in lines],
+              loc='center right', fontsize=9, frameon=True)
+
+    ax.set_title(
+        title + '\n'
+        + rf'$\mathrm{{ARL}} = {result.arl:.2f}$, '
+          rf'$\mathrm{{SDRL}} = {result.sdrl:.2f}$, '
+          rf'$\mathrm{{MRL}} = {result.mrl}$'
+    )
+    ax.grid(alpha=0.25, linestyle=':')
+    despine(ax)
+    despine(ax2)
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"График сохранён: {path}")

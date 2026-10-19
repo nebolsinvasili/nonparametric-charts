@@ -183,6 +183,11 @@ class RunLengthResult:
         Параметры карты.
     sided : str
         ``'upper'``, ``'lower'`` или ``'two'``.
+    metadata : dict
+        Дополнительные сведения (``n``, ``p``, ``SE(ARL)`` и т. п.).
+    transition_matrix : numpy.ndarray, optional
+        Матрица ``Q`` (только для марковского метода); строки и столбцы
+        соответствуют ``states``.
     """
 
     arl: float
@@ -199,6 +204,7 @@ class RunLengthResult:
     h: float
     sided: str
     metadata: Dict[str, float] = field(default_factory=dict)
+    transition_matrix: Optional[np.ndarray] = None
 
     def percentile(self, q: float) -> int:
         """Перцентиль уровня ``q`` (наименьшее ``t`` с ``F(t) ≥ q``)."""
@@ -572,6 +578,7 @@ def cusum_run_length(
             'step_max': float(values.max()),
             'step_span': float(values.max() - values.min()),
         },
+        transition_matrix=matrix,
     )
 
 

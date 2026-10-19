@@ -19,7 +19,7 @@
 ## Definition of Done
 
 - [x] Код + тесты (`pytest`) зелёные (ядро 3a для SN, ADR-022 для SR).
-- [x] Примеры книги (`examples/`, `npc examples`) — `OK` (4.6, 4.7, 4.9).
+- [x] Примеры книги (`examples/`, `npc examples`) — `OK` (4.6, 4.7, 4.8, 4.9, 4.10).
 - [ ] Ноутбук исполняется, `style-check` пройден.
 - [ ] Опыты + кросс-валидация (Python↔R) + инструкции воспроизведения.
 - [ ] Отчёт `docs/reports/cusum_verification.tex/.pdf`, `make` чисто.
@@ -180,12 +180,28 @@
 - Тесты: `tests/test_cusum_sign_chart.py`,
   `tests/test_cusum_signed_rank_chart.py`
 - Примеры: `examples/example_4_{6,7}_cusum_sn_*.py`,
-  `examples/example_4_9_cusum_sr.py`
+  `examples/example_4_9_cusum_sr.py`,
+  `examples/example_4_8_cusum_sn_markov.py`,
+  `examples/example_4_10_cusum_sr_markov.py`
 - Ноутбук: `notebooks/cusum_analysis.ipynb` (планируется)
 - Опыты: `experiments/cusum/...` (планируется)
 - Отчёт: `docs/reports/cusum_verification.tex/.pdf` (планируется)
 
 ## Журнал прогресса
+
+### 2026-10-19 — примеры 4.8 и 4.10 (марковский RL)
+- Сделано: `examples/example_4_8_cusum_sn_markov.py` и
+  `examples/example_4_10_cusum_sr_markov.py` — печатают пространство
+  состояний, матрицу `Q`, вероятности поглощения и характеристики RL,
+  сверяют с табл. 4.10–4.14; сохраняют PMF/CDF-график.
+  В `_common.py` — общий `plot_run_length`; в `RunLengthResult` добавлено
+  поле `transition_matrix` (только марковский метод); обновлён
+  `examples/README.md`.
+- Проверка: 4.8 — `Ω⁺ = {0, 2}`, `Q` и `P(сигнал)` совпадают с книгой,
+  `ARL=16.615`, `SDRL=15.509`, перцентили `2/6/12/23/48`; 4.10 —
+  `Ω⁺ = {0, 2, 4}`, `ARL=6.809`, `SDRL=6.106`, перцентили `1/2/5/9/19`;
+  `npc examples` → **10/10 OK**.
+- Далее: примеры книги закрыты; 3b.4/3b.5.
 
 ### 2026-10-19 — этап 3b.3 (renewal / интегральный метод)
 - Сделано: `renewal_cusum_run_length` — распределение по состояниям
