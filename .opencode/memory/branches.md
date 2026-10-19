@@ -11,6 +11,7 @@
 | `feat/cusum-charts` | closed | `master` | CUSUM-SN/SR, утилита статистик (ADR-020/022) | 2026-10-19 | 2026-10-19 | `1c192d5` |
 | `chore/plot-style` | closed | `master` | Единый стиль графиков (ADR-021) | 2026-10-19 | 2026-10-19 | `ade862b` |
 | `chore/experiments-style` | closed | `master` | Строгий вывод экспериментов | 2026-10-19 | 2026-10-19 | `391cb16` |
+| `feat/cusum-run-length` | open | `master` | RL CUSUM: марковский движок, дизайн `(k,h)` (ADR-023) | 2026-10-19 | — | — |
 
 Статусы: `planned` → `open` → `closed`. Ветки после слияния удалены.
 
