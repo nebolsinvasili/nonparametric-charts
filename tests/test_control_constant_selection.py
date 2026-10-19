@@ -9,8 +9,8 @@ Process Control*. John Wiley & Sons.
 Раздел 4.2.1.1 (знаковая карта, стр. 189–196) и § 4.2.1.2
 (знако-ранговая карта, стр. 196–202).
 
-Правило (консервативный/симметричный подходы)
----------------------------------------------
+Правило (точный подход, id ``exact``)
+-------------------------------------
 a — наименьшее *достижимое* значение статистики (той же чётности, что n
 для SN и что S = n(n+1)/2 для SR), для которого
 
@@ -21,6 +21,15 @@ a — наименьшее *достижимое* значение статис�
 — самые широкие границы и наименьший достижимый FAR; так книга поступает
 для n = 1 (a = 1, стр. 190) и n = 4 у SR (a = S = 10, пример 4.4).
 
+Нормальная аппроксимация (id ``normal``)
+----------------------------------------
+a — наименьшее достижимое значение (той же чётности), не меньше
+z_{1−FAR₀/2} · SD(статистики), где SD(SN) = sqrt(n),
+SD(SR) = sqrt(n(n+1)(2n+1)/6). Это асимптотическая граница
+(ср. npSPC::Limits_asymptotical); достигнутый FAR не обязан быть ≤ FAR₀,
+а при малых n, где z·SD превышает максимум статистики, a = n (для SN)
+или a = S (для SR).
+
 Регрессия
 ---------
 Ранее перебор a шёл сверху вниз и возвращал *наибольшее* подходящее a
@@ -28,11 +37,13 @@ a — наименьшее *достижимое* значение статис�
 Здесь зафиксировано правильное поведение: наименьшее достижимое a.
 """
 
+import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
-from src.charts.sign_chart import SignChart
-from src.charts.signed_rank_chart import SignedRankChart
+from nonparametric_charts.charts.sign_chart import SignChart
+from nonparametric_charts.charts.signed_rank_chart import SignedRankChart
 
 FAR0 = 0.0027
 
@@ -48,16 +59,16 @@ FAR0 = 0.0027
     (14, 12),  # наименьшее достижимое (раньше ошибочно 14)
     (16, 14),  # наименьшее достижимое
 ])
-def test_sign_conservative_book_values(n: int, expected_a: int) -> None:
-    a, far = SignChart._calc_a_conservative(n, FAR0)
+def test_sign_exact_book_values(n: int, expected_a: int) -> None:
+    a, far = SignChart._calc_a_exact(n, FAR0)
     assert a == expected_a
     assert far == pytest.approx(2.0 * SignChart._p_sn_ge_a(n, a))
 
 
 @pytest.mark.parametrize("n", range(1, 31))
-def test_sign_conservative_properties(n: int) -> None:
+def test_sign_exact_properties(n: int) -> None:
     """Минимальность, достижимая чётность и fallback = n."""
-    a, far = SignChart._calc_a_conservative(n, FAR0)
+    a, far = SignChart._calc_a_exact(n, FAR0)
 
     assert 1 <= a <= n
     assert (a - n) % 2 == 0, "a должно быть достижимым (та же чётность, что n)"
@@ -70,11 +81,17 @@ def test_sign_conservative_properties(n: int) -> None:
         assert SignChart._p_sn_ge_a(n, a - 2) > FAR0 / 2, "a не минимально"
 
 
-@pytest.mark.parametrize("n", [3, 5, 7, 9, 11])
-def test_sign_symmetric_matches_parity(n: int) -> None:
-    """Симметричный подход даёт достижимое a той же чётности, что и n."""
-    a, far = SignChart._calc_a_symmetric(n, FAR0)
-    assert (a - n) % 2 == 0
+@pytest.mark.parametrize("n", range(1, 31))
+def test_sign_normal_approximation(n: int) -> None:
+    """Нормальный подход: наименьшее достижимое a >= z·SD(SN), SD = sqrt(n)."""
+    a, far = SignChart._calc_a_normal(n, FAR0)
+    target = stats.norm.ppf(1.0 - FAR0 / 2.0) * np.sqrt(n)
+
+    assert (a - n) % 2 == 0, "a должно быть достижимым (та же чётность, что n)"
+    assert 1 <= a <= n
+    # либо граница упирается в максимум (a = n), либо это наименьшее достижимое
+    # значение не ниже нормального порога
+    assert a == n or (a >= target - 1e-9 and a - 2 < target)
     assert far == pytest.approx(2.0 * SignChart._p_sn_ge_a(n, a))
 
 
@@ -88,10 +105,10 @@ def _sr_chart(n: int = 4) -> SignedRankChart:
     return SignedRankChart(data, sample_size=n, target_value=0.0)
 
 
-def test_signed_rank_conservative_book_example_4_4() -> None:
+def test_signed_rank_exact_book_example_4_4() -> None:
     """Пример 4.4: n = 4, целевая вероятность недостижима → a = S = 10."""
     chart = _sr_chart(4)
-    a, far = SignedRankChart._calc_a_conservative(4, FAR0, chart._p_sr_ge_a)
+    a, far = SignedRankChart._calc_a_exact(4, FAR0, chart._p_sr_ge_a)
 
     assert a == 10
     assert a == 4 * 5 // 2
@@ -99,11 +116,11 @@ def test_signed_rank_conservative_book_example_4_4() -> None:
 
 
 @pytest.mark.parametrize("n", range(2, 17))
-def test_signed_rank_conservative_properties(n: int) -> None:
+def test_signed_rank_exact_properties(n: int) -> None:
     """Минимальность, достижимая чётность (чётность S) и fallback = S."""
     chart = _sr_chart(n)
     S = n * (n + 1) // 2
-    a, far = SignedRankChart._calc_a_conservative(n, FAR0, chart._p_sr_ge_a)
+    a, far = SignedRankChart._calc_a_exact(n, FAR0, chart._p_sr_ge_a)
 
     assert 1 <= a <= S
     assert (a - S) % 2 == 0, "a должно иметь чётность S"
@@ -114,3 +131,20 @@ def test_signed_rank_conservative_properties(n: int) -> None:
 
     if a - 2 >= 1:
         assert chart._p_sr_ge_a(n, a - 2) > FAR0 / 2, "a не минимально"
+
+
+@pytest.mark.parametrize("n", range(2, 21))
+def test_signed_rank_normal_approximation(n: int) -> None:
+    """
+    Нормальный подход (нормальная аппроксимация): наименьшее достижимое a
+    не меньше z·SD(SR), SD = sqrt(n(n+1)(2n+1)/6).
+    """
+    chart = _sr_chart(n)
+    S = n * (n + 1) // 2
+    a, far = SignedRankChart._calc_a_normal(n, FAR0, chart._p_sr_ge_a)
+    target = stats.norm.ppf(1.0 - FAR0 / 2.0) * np.sqrt(n * (n + 1) * (2 * n + 1) / 6)
+
+    assert (a - S) % 2 == 0, "a должно иметь чётность S"
+    assert 1 <= a <= S
+    assert a == S or (a >= target - 1e-9 and a - 2 < target)
+    assert far == pytest.approx(2.0 * chart._p_sr_ge_a(n, a))
