@@ -81,10 +81,13 @@ results/        # сгенерированные артефакты (tests/, exa
 - Общие помощники визуализации добавляются **сразу** в
   `src/nonparametric_charts/utils/plotting.py`; `examples/`, `experiments/`,
   `notebooks/` используют их как тонкие обёртки и не дублируют код графиков.
-- Тесты кода: `pytest` (каталог `tests/`).
+- Тесты кода: `pytest` (каталог `tests/`); долгие проверки помечены
+  `@pytest.mark.slow` и пропускаются командой `npc test --fast`
+  (`npc test --slow` — наоборот, только они).
 - Опыты: `experiments/{sn,sr}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
-- Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`,
-  `npc examples`, `npc experiment {sn|sr|all}`; реализация — `src/nonparametric_charts/cli.py`.
+- Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`
+  (`--fast`/`--slow`), `npc examples`, `npc experiment {sn|sr|cusum|all}`;
+  реализация — `src/nonparametric_charts/cli.py`.
 
 ## `BaseControlChart`
 

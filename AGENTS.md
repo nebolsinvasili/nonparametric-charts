@@ -82,8 +82,9 @@
 - Данные: строка = подгруппа, столбец = измерение, `sample_size` = число столбцов.
 - Окружение: Python >= 3.14, установка — `poetry install --with dev` **или**
   `pip install .`; kernel `nonparametric-charts-py`, ноутбуки запускать из `notebooks/`.
-- Алиасы запуска: `npc test` (тесты), `npc examples` (примеры книги),
-  `npc experiment {sn|sr|all}` (опыты). Определены в `[project.scripts]`
+- Алиасы запуска: `npc test` (тесты; `--fast` — без `@pytest.mark.slow`,
+  `--slow` — только они), `npc examples` (примеры книги),
+  `npc experiment {sn|sr|cusum|all}` (опыты). Определены в `[project.scripts]`
   (`src/nonparametric_charts/cli.py`), доступны и через pip, и через poetry.
 - Тесты кода: `tests/` — инварианты API (`tests/test_charts.py`) и правило
   выбора `a` (`tests/test_control_constant_selection.py`). Проверка примеров

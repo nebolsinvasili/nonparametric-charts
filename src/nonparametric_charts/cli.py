@@ -5,6 +5,8 @@
 
     npc test                 # тесты кода (pytest по tests/)
     npc test -q              # с аргументами pytest (передаются как есть)
+    npc test --fast          # только быстрые тесты (без @pytest.mark.slow)
+    npc test --slow          # только помеченные @pytest.mark.slow
     npc examples             # проверить все примеры книги (examples/)
     npc examples 4.1 4.4     # только указанные примеры
     npc experiment           # запустить анализы SN, SR и CUSUM (experiments/)
@@ -12,8 +14,9 @@
     npc experiment cusum     # все пронумерованные скрипты experiments/cusum/
     npc experiment --list    # список скриптов экспериментов
 
-Команда ищет корень репозитория рядом с исходниками (src-layout) или вверх от
-текущего каталога, поэтому запускать её можно из любого места внутри репозитория.
+Команда ищет корень репозитория рядом с исходниками (src-layout) или вверх
+от текущего каталога, поэтому запускать её можно из любого места внутри
+репозитория.
 """
 
 from __future__ import annotations
@@ -50,10 +53,31 @@ def _run(cmd: List[str], cwd: Path) -> int:
     return subprocess.call(cmd, cwd=str(cwd))
 
 
+def _translate_test_args(pytest_args: List[str]) -> List[str]:
+    """Перевести флаги профиля ``--fast``/``--slow`` в аргументы pytest.
+
+    ``--fast`` пропускает тесты с маркером ``slow`` (производительность и
+    прочие долгие проверки), ``--slow`` запускает только их. Остальные
+    аргументы передаются pytest как есть.
+    """
+    fast = "--fast" in pytest_args
+    slow = "--slow" in pytest_args
+    if fast and slow:
+        raise SystemExit("Нельзя одновременно --fast и --slow")
+
+    cleaned = [arg for arg in pytest_args if arg not in ("--fast", "--slow")]
+    if fast:
+        cleaned += ["-m", "not slow"]
+    elif slow:
+        cleaned += ["-m", "slow"]
+    return cleaned
+
+
 def cmd_test(pytest_args: List[str]) -> int:
     """Запустить pytest, передав ему аргументы как есть."""
     root = _repo_root()
-    return _run([sys.executable, "-m", "pytest", *pytest_args], root)
+    args = _translate_test_args(pytest_args)
+    return _run([sys.executable, "-m", "pytest", *args], root)
 
 
 def cmd_examples(args: argparse.Namespace) -> int:
@@ -123,7 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_test = sub.add_parser("test", help="запустить тесты кода (pytest по tests/)")
+    p_test = sub.add_parser(
+        "test",
+        help="запустить тесты кода (pytest по tests/); "
+             "--fast — без @pytest.mark.slow, --slow — только они",
+    )
     p_test.set_defaults(func=lambda args: cmd_test([]))
 
     p_examples = sub.add_parser(
@@ -155,8 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
-    # `npc test …` — всё после «test» передаётся pytest как есть (в т.ч. -q и др.),
-    # поэтому эту команду разбираем вручную, минуя argparse.
+    # `npc test …` — всё после «test» передаётся pytest как есть
+    # (в т.ч. -q и др.), поэтому эту команду разбираем вручную,
+    # минуя argparse.
     if argv and argv[0] == "test":
         return cmd_test(argv[1:])
 

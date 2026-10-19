@@ -189,6 +189,9 @@
   в пределах 3 SE, «золотые» значения, валидация аргументов);
   `tests/test_run_length_performance.py` (guard-бюджеты времени, фиксированные
   размеры `Q` для `n = 10, 20`, дробное `k`, большой `ARL` рис. 4.6);
+  модуль помечен `@pytest.mark.slow` и пропускается командой
+  `npc test --fast` (`npc test --slow` — только он; маркер зарегистрирован
+  в `pyproject.toml`);
   `experiments/cusum/04_performance.py` — разбивка времени по фазам
   (состояния / `Q` / solve+PMF), рост стоимости по `n`, график
   `cusum_performance.png`.
@@ -273,6 +276,10 @@
 - Проверка: `poetry run pytest -q` → **287 passed** (было 217; +70);
   `npc examples` → **10/10 OK**; `npc experiment cusum` — все четыре опыта
   без ошибок.
+- Профиль запуска: guard-тесты помечены `@pytest.mark.slow`; `npc test --fast`
+  пропускает их (быстрый локальный цикл), `npc test --slow` — только они.
+  Реализовано в `cli.py` (`_translate_test_args`), маркер — в
+  `pyproject.toml`, покрыто `tests/test_cli.py`.
 - Далее: 3b.10 (кросс-валидация Python↔R).
 
 ### 2026-10-19 — этап 3b.8 (API и визуализация RL)

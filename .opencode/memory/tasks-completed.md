@@ -833,12 +833,20 @@
   - `experiments/cusum/04_performance.py` — разбивка времени по фазам
     (состояния / `Q` / solve+PMF), реперные дизайны `n = 10, 20` и рост
     стоимости по `n`; график `results/experiments/cusum_performance.png`.
+  - профиль запуска: guard-тесты помечены `@pytest.mark.slow`; `npc test
+    --fast` пропускает их, `npc test --slow` — только они (перевод флагов в
+    `cli.py::_translate_test_args`, маркер в `pyproject.toml`, тесты в
+    `tests/test_cli.py`).
 - **Вывод:** основное время — развёртка PMF (пропорциональна `ARL`), а не
   решение системы; `Q` мала (SN 2–3 состояния, SR до 47 при `n = 20`); для
   `SR` число состояний растёт линейно по `n`.
 - **Затронуто:** `tests/test_run_length_invariants.py`,
-  `tests/test_run_length_performance.py`, `experiments/cusum/04_performance.py`,
-  `docs/reports/cusum_plan.md`.
-- **Проверка:** `poetry run pytest -q` → **287 passed** (было 217; +70);
-  `npc examples` → **10/10 OK**; `npc experiment cusum` — 4 опыта без ошибок.
+  `tests/test_run_length_performance.py`, `tests/test_cli.py`,
+  `src/nonparametric_charts/cli.py`, `pyproject.toml`,
+  `experiments/cusum/04_performance.py`, `docs/reports/cusum_plan.md`,
+  `AGENTS.md`, `.opencode/rules/reference.md`.
+- **Проверка:** `poetry run pytest -q` → **291 passed** (было 217; +74);
+  `npc test --fast` → 272 passed, 19 deselected; `npc test --slow` →
+  19 passed; `npc examples` → **10/10 OK**; `npc experiment cusum` —
+  4 опыта без ошибок.
 - **Далее:** 3b.10 — кросс-валидация Python↔R; 3b.11 — документирование.

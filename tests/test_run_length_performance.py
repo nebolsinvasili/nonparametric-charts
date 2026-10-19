@@ -7,6 +7,9 @@ Guard-тесты на вычислительную стоимость марко
 дробного ``k``, дробящего решётку), а не микро-бенчмарк.
 
 Точные времена и разбивка по фазам — в ``experiments/cusum/04_performance.py``.
+
+Модуль помечен ``@pytest.mark.slow``: в локальном быстром цикле
+пропускается командой ``npc test --fast`` (см. ``docs/reports/cusum_plan.md``).
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from nonparametric_charts.utils.run_length import (
     cusum_sign_run_length,
     cusum_signed_rank_run_length,
 )
+
+pytestmark = pytest.mark.slow
 
 #: Реперные дизайны (statistic, n, k, h, sided).
 BENCHMARK_DESIGNS = (
