@@ -1,0 +1,24 @@
+========================================================================
+03. SN «с нуля» на базовом R: normal vs exact
+    Скрипт: experiments/sn/custom_sign_chart.R
+    Требуется: только базовый R (пакеты не нужны)
+========================================================================
+
+ЦЕЛЬ
+  Показать расхождение границ при normal-аппроксимации и exact.
+
+ЧТО ДЕЛАЕТСЯ
+  * sn_chart_custom(X, med, far, method): SN = n+ − n−; границы
+    normal a = ceil(z·√n) или exact (точное биномиальное правило).
+  * Таблица: n, exact, normal, diff, FAR(normal); n = 10..100.
+  * Данные: n = 16, m = 20 000 (IC); сравнение FAR при normal и exact.
+
+ЗАПУСК
+  cd $REPO
+  R_LIBS=$RENV/lib/R/library \
+      $RENV/bin/Rscript experiments/sn/custom_sign_chart.R
+
+ОЖИДАЕМОЕ
+  * n = 16: normal a = 12, exact a = 14.
+  * FAR при a = 12 ≈ 0.0038 — выше номинала 0.0027.
+  * Для части n граница normal имеет недопустимую чётность.

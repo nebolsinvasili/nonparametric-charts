@@ -1,0 +1,29 @@
+========================================================================
+02. Перекрёстная проверка SN на одних данных
+    Скрипты: experiments/sn/cross_validation.R (R + npSPC)
+             experiments/sn/cross_check.py    (Python)
+    Требуется: R + пакет npSPC (см. 00_ENVIRONMENT.txt), Python
+========================================================================
+
+ЦЕЛЬ
+  Проверить совпадение статистики SN и меток сигналов: Python vs npSPC (R).
+
+УСЛОВИЯ
+  n = 16, m = 3000; первые 2000 — IC, с подгруппы 2001 — сдвиг δ = 1σ.
+
+ПОРЯДОК
+  1. R генерирует данные → experiments/sn/data_cross.csv.
+     Границы: npSPC(far = 0.0027) a = 12, exact a = 14.
+  2. R сохраняет SN и метки сигналов → experiments/sn/data_cross_out.csv.
+  3. Python повторяет SN и сверяет с R.
+
+ЗАПУСК
+  cd $REPO
+  R_LIBS=$RENV/lib/R/library \
+      $RENV/bin/Rscript experiments/sn/cross_validation.R
+  poetry run python experiments/sn/cross_check.py
+
+ОЖИДАЕМОЕ
+  * SN: Python == R.
+  * IC: npSPC(far = 0.0027) — 14 тревог (FAR = 0.00700); exact — 1 (FAR = 0.00050).
+  * Метки сигналов совпадают при равной границе.

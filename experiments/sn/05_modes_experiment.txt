@@ -1,0 +1,29 @@
+========================================================================
+05. SN: сравнение правил выбора границы a
+    Скрипты: experiments/sn/modes_experiment.py (Python)
+             experiments/sn/mode_comparison.R   (R + npSPC)
+    Требуется: Python, R + пакет npSPC (см. 00_ENVIRONMENT.txt)
+========================================================================
+
+ЦЕЛЬ
+  Сопоставить правила exact, normal, nearest(α = 0.05), normal(approx) и
+  npSPC(far = 0.0027/0.00135) на одних данных.
+
+УСЛОВИЯ
+  n = 13, 16, 19; m = 3000; первые 2000 — IC, с подгруппы 2001 — сдвиг δ = 1σ.
+
+МЕТРИКИ
+  a, FAR (теория), FA(IC) — ложные тревоги на IC-участке, delay — задержка
+  обнаружения сдвига.
+
+ЗАПУСК
+  cd $REPO
+  RSCRIPT=$RENV/bin/Rscript R_LIBS=$RENV/lib/R/library \
+      poetry run python experiments/sn/modes_experiment.py
+
+ОЖИДАЕМОЕ (n = 16)
+  * exact = normal: a = 14, FA(IC) = 2.
+  * npSPC(far = 0.00135): a = 14.
+  * npSPC(far = 0.0027): a = 12, FA(IC) = 6 (FAR ≈ 0.0042).
+  * nearest(α = 0.05): a = 7, FA(IC) = 136.
+  * Таблица: experiments/sn/modes_summary.csv.

@@ -1,0 +1,29 @@
+========================================================================
+02. Перекрёстная проверка SR на одних данных
+    Скрипты: experiments/sr/sr_cross_validation.R (R + npSPC)
+             experiments/sr/sr_cross_check.py    (Python)
+    Требуется: R + пакет npSPC (см. ../00_ENVIRONMENT.txt), Python
+========================================================================
+
+ЦЕЛЬ
+  Проверить совпадение статистики SR и меток сигналов: Python vs npSPC (R).
+
+УСЛОВИЯ
+  n = 16, m = 3000; первые 2000 — IC, с подгруппы 2001 — сдвиг δ = 1σ.
+
+ПОРЯДОК
+  1. R: npSPC::shewhart_sr(exact = TRUE) → a = 108; exact → a = 110.
+     Данные → experiments/sr/data_sr_cross.csv;
+     результат → experiments/sr/data_sr_cross_out.csv.
+  2. Python повторяет SR (ранги |X| внутри подгруппы) и сверяет с R.
+
+ЗАПУСК
+  cd $REPO
+  R_LIBS=$RENV/lib/R/library \
+      $RENV/bin/Rscript experiments/sr/sr_cross_validation.R
+  poetry run python experiments/sr/sr_cross_check.py
+
+ОЖИДАЕМОЕ
+  * SR: Python == R.
+  * IC: npSPC-exact(0.0027) a = 108 — 5 тревог; exact a = 110 — 3.
+  * Ничьих нет.
