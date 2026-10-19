@@ -1,7 +1,10 @@
-# Шаблон: новая контрольная карта (`src/charts/<name>_chart.py`)
+# Шаблон: новая контрольная карта (`src/nonparametric_charts/charts/<name>_chart.py`)
 
 Не изобретать структуру — заполнять по образцу существующих карт
 (`sign_chart.py`, `signed_rank_chart.py`). Перед реализацией — `book-lookup`.
+Порядок работы — команда `/new-chart` (`.opencode/commands/new-chart.md`);
+рабочий документ карты — `docs/reports/<chart>_plan.md`
+(шаблон `.opencode/templates/chart-plan.md`).
 
 ```python
 """
@@ -25,7 +28,7 @@ import matplotlib.pyplot as plt
 from typing import Dict, Optional, Tuple, List
 
 try:
-    from src.base.base_chart import BaseControlChart
+    from nonparametric_charts.base.base_chart import BaseControlChart
 except ImportError:  # fallback, как в sign_chart.py
     class BaseControlChart:
         def __init__(self, data, sample_size, coefficients_file=None):
@@ -77,6 +80,7 @@ class <Name>Chart(BaseControlChart):
 - [ ] В докстринге — раздел и печатные страницы книги.
 - [ ] Границы/константы сверены с книгой (`book-lookup`).
 - [ ] Стиль графика — минималистичный LaTeX (`plot_style`), зоны без заливки.
-- [ ] Добавлен тест в `tests/<name>/` с примером из книги.
+- [ ] Инварианты API покрыты тестом в `tests/` (без привязки к книге).
+- [ ] Пример из книги добавлен в `examples/` (+ `examples/README.md`, `run_all.py`).
 - [ ] Обновлены `memory/tasks-completed.md` и (при необходимости)
-      `memory/architecture-decisions.md`.
+      `memory/architecture-decisions.md`, `memory/book-map.md`.
