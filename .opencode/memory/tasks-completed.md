@@ -627,6 +627,24 @@
   сверены 4.1 (подписи вплотную к точкам) и 4.4 (красный маркер умеренно крупнее).
 - **См.:** `.opencode/rules/plot-style.md` (маркеры, `value_offset` в пунктах).
 
+### 2026-10-19 — Правило веток и раскладка накопленного WIP по 7 веткам
+
+- **Что сделано:**
+  - добавлено жёсткое правило №8 «Ветки для крупных изменений» (`AGENTS.md`,
+    `.opencode/rules/profile.md`) и журнал `.opencode/memory/branches.md`;
+  - накопленный незакоммиченный WIP разложен на 7 тематических веток
+    (`chore/external-skills`, `chore/docs-reorg`, `chore/package-src-layout`,
+    `chore/repo-split`, `feat/cusum-charts`, `chore/plot-style`,
+    `chore/experiments-style`), каждая слита в `master` через `merge --no-ff`
+    и удалена;
+  - мета-коммит `d673a98` (правила, ADR, журнал задач) — прямо в `master`.
+- **Механика:** раскладка **по путям** (без `git add -p`); файлы, несущие
+  несколько тем, отнесены к одной ветке (см. примечания в `branches.md`).
+- **Проверка:** `poetry run pytest -q` → **135 passed**;
+  `poetry run python examples/run_all.py` → все **8** примеров `OK`;
+  `git status` пуст. Точка безопасности до раскладки — тег `wip-backup-2026-10-19`.
+- **См.:** `.opencode/memory/branches.md`, план `~/.opencode/plan/branch-workflow.md`.
+
 ### 2026-10-19 — Общий помощник подписей значений + тесты стиля
 
 - **Что сделано:**
