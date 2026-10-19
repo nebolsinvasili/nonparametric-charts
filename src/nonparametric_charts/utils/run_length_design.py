@@ -6,10 +6,16 @@
 - распределения статистики подгруппы при сдвиге процесса (OOC);
 - OC-кривые ``ARL(δ)`` для разных распределений;
 - подбор интервала решения ``h`` под номинальный ``ARL_IC``;
+- совместный дизайн ``(k, h)`` под целевой сдвиг ``δ`` и номинальный
+  ``ARL_IC`` (минимум ``ARL_OOC``);
 - приближённые формулы (Сигмунд, Вальд/``1/FAR``) для быстрых оценок.
 
 Источник: Chakraborti & Graham (2019)
-- выбор ``(k, h)`` — § 3.2.2, стр. 67; § 4.2.2, стр. 202–203;
+- выбор ``(k, h)`` — § 3.2.2, стр. 67–72 (``k = δ/2``, минимум
+  ``ARL_OOC`` при фиксированном ``ARL_IC``); § 4.2.2, стр. 202–203;
+  § 4.3.2, стр. 232–233, 236–238 (``k`` выбирается первым, ``h`` — под
+  номинальный ``ARL_IC``); таблица ``(h, k)`` для ``n = 10`` —
+  Amin, Reynolds & Bakir (1995), табл. 5;
 - симуляция RL — § 4.2.2.3.2/§ 4.2.2.4.3, стр. 205/207–208;
 - ARL и FAR — § 2.1.12, стр. 39–50.
 
@@ -22,7 +28,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from math import factorial, gcd, inf, sqrt
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
@@ -51,6 +66,11 @@ __all__ = [
     'design_h',
     'design_sign_h',
     'design_signed_rank_h',
+    'reference_k',
+    'DesignKHResult',
+    'design_kh',
+    'design_sign_kh',
+    'design_signed_rank_kh',
 ]
 
 
@@ -840,6 +860,32 @@ def _lattice_step(
     return step if step > 0 else 1.0
 
 
+def _values_step(
+    step_values: Sequence[float],
+    scale: int = 1_000_000,
+) -> float:
+    """
+    Шаг решётки значений статистики (НОД разностей соседних значений).
+
+    Для ``SN``/``SR`` равен 2. Используется как основа шага сетки ``k``:
+    при целом ``k`` на этой решётке приращения ``Z_t − k`` остаются на
+    решётке, и пространство состояний конечно (ср. §4.3.2, стр. 234: для
+    нечётного ``n`` берут нечётное ``k``, чтобы ``SN_i − k`` были чётными).
+    """
+    values = sorted({float(value) for value in step_values})
+    if len(values) < 2:
+        return 1.0
+    differences = [
+        int(round((values[index + 1] - values[index]) * scale))
+        for index in range(len(values) - 1)
+    ]
+    common = 0
+    for number in differences:
+        common = gcd(common, abs(number))
+    step = common / scale
+    return step if step > 0 else 1.0
+
+
 def design_h(
     step_values: Sequence[float],
     step_probabilities: Sequence[float],
@@ -850,15 +896,25 @@ def design_h(
     statistic: str = '',
     n: Optional[int] = None,
     max_candidates: int = 5_000,
+    ic_rule: str = 'conservative',
 ) -> DesignResult:
     """
     Подобрать ``h`` под номинальную ``ARL_IC``.
 
+    Для дискретной статистики номинал, как правило, недостижим точно, и
+    книга предписывает **консервативный** подход: ``h`` выбирается так,
+    чтобы достигнутая ``ARL_IC`` была **не больше** номинала (§ 3.2.2,
+    стр. 71). Соответственно ``ic_rule='conservative'`` (по умолчанию)
+    берёт наибольшее ``h`` с ``ARL ≤ номинала`` — ближайшее снизу; если ни
+    одно ``h`` не даёт ``ARL ≤ номинала``, возвращается ближайшее сверху и
+    заполняется ``note``. ``ic_rule='nearest'`` — прежнее поведение (минимум
+    ``|ARL − номинал|``) без оглядки на сторону.
+
     ``ARL(h)`` для решётчатой статистики — ступенчатая функция: при
     переходе ``h`` через достижимое состояние меняется размер пространства
     состояний. Поэтому вместо чистой бисекции перебираются критические
-    значения ``h`` (кратные шагу решётки) и выбирается вариант с минимальным
-    отклонением от номинала.
+    значения ``h`` (кратные шагу решётки) и выбирается вариант по правилу
+    выше.
 
     Parameters
     ----------
@@ -874,16 +930,19 @@ def design_h(
         Метаданные для отчёта.
     max_candidates : int, default=5000
         Предохранитель перебора.
+    ic_rule : {'conservative', 'nearest'}, default='conservative'
+        Правило достижения номинала: ``conservative`` — ``ARL ≤ номинала``
+        (книга), ``nearest`` — минимум отклонения по модулю.
 
     Returns
     -------
     DesignResult
-        Ближайший достижимый дизайн.
+        Найденный ``h``, достигнутая ``ARL`` и отклонение от номинала.
 
     Notes
     -----
     Номинал может быть недостижим точно (скачок ``ARL``); в этом случае
-    возвращается ближайшее значение и заполняется ``note``.
+    возвращается ближайшее по правилу значение и заполняется ``note``.
     """
     if target_arl <= 1:
         raise ValueError(f'Целевая ARL должна быть > 1, получено {target_arl}')
@@ -891,13 +950,19 @@ def design_h(
         raise ValueError(
             f'Референсное значение k должно быть > 0, получено {k}'
         )
+    if ic_rule not in {'conservative', 'nearest'}:
+        raise ValueError(
+            "ic_rule должен быть 'conservative' или 'nearest', "
+            f'получено {ic_rule!r}'
+        )
 
     values = np.asarray(step_values, dtype=float)
     probabilities = np.asarray(step_probabilities, dtype=float)
     probabilities = probabilities / probabilities.sum()
 
     step = _lattice_step(values, k)
-    best: Optional[Tuple[float, float]] = None
+    best_nearest: Optional[Tuple[float, float]] = None
+    best_conservative: Optional[Tuple[float, float]] = None
 
     for index in range(1, max_candidates + 1):
         h = step * index
@@ -908,23 +973,40 @@ def design_h(
         except ValueError:
             continue
 
-        if best is None or abs(arl - target_arl) < abs(best[0] - target_arl):
-            best = (arl, h)
+        if best_nearest is None or abs(arl - target_arl) < abs(
+            best_nearest[0] - target_arl
+        ):
+            best_nearest = (arl, h)
+        if arl <= target_arl and (
+            best_conservative is None or arl >= best_conservative[0]
+        ):
+            best_conservative = (arl, h)
 
         # Ступенчатая функция: как только ARL заметно превысила номинал
         # и начала расти, дальнейшие h только ухудшают приближение.
-        if best is not None and arl > 2.0 * target_arl and index > 1:
+        if best_nearest is not None and arl > 2.0 * target_arl and index > 1:
             break
 
-    if best is None:
+    if best_nearest is None:
         raise ValueError(
             'Не удалось подобрать h: карта не сигнализирует ни при одном h'
         )
 
-    arl, h = best
-    note = ''
+    conservative_fallback = False
+    if ic_rule == 'conservative' and best_conservative is not None:
+        arl, h = best_conservative
+    else:
+        arl, h = best_nearest
+        conservative_fallback = ic_rule == 'conservative'
+
+    notes: List[str] = []
+    if conservative_fallback:
+        notes.append(
+            'Ни одно h не даёт ARL_IC ≤ номинала: возвращено ближайшее '
+            'сверху (номинал недостижим на решётке)'
+        )
     if abs(arl - target_arl) / target_arl > 0.05:
-        note = (
+        notes.append(
             'Номинал недостижим точно: ARL(h) — ступенчатая функция '
             '(решётчатое распределение статистики)'
         )
@@ -938,7 +1020,7 @@ def design_h(
         statistic=statistic,
         n=n,
         n_evaluated=min(index, max_candidates),
-        note=note,
+        note='; '.join(notes),
     )
 
 
@@ -950,13 +1032,14 @@ def design_sign_h(
     sided: str = 'two',
     p: float = 0.5,
     max_candidates: int = 5_000,
+    ic_rule: str = 'conservative',
 ) -> DesignResult:
     """Подобрать ``h`` для CUSUM-SN под номинальную ``ARL_IC``."""
     values, probabilities = sign_step_distribution(n, p)
     return design_h(
         values, probabilities, target_arl, k,
         sided=sided, statistic='SN', n=n,
-        max_candidates=max_candidates,
+        max_candidates=max_candidates, ic_rule=ic_rule,
     )
 
 
@@ -967,11 +1050,492 @@ def design_signed_rank_h(
     *,
     sided: str = 'two',
     max_candidates: int = 5_000,
+    ic_rule: str = 'conservative',
 ) -> DesignResult:
     """Подобрать ``h`` для CUSUM-SR под номинальную ``ARL_IC``."""
     values, probabilities = signed_rank_step_distribution(n)
     return design_h(
         values, probabilities, target_arl, k,
         sided=sided, statistic='SR', n=n,
-        max_candidates=max_candidates,
+        max_candidates=max_candidates, ic_rule=ic_rule,
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Совместный дизайн (k, h) под целевой сдвиг
+# --------------------------------------------------------------------------- #
+
+def _shift_step_distribution(
+    n: int,
+    delta: float,
+    statistic: str,
+    distribution: str,
+    *,
+    method: str = 'auto',
+    n_sim: int = 200_000,
+    seed: Optional[int] = None,
+    quadrature_points: int = 2_001,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Распределение шага ``Z_t`` при сдвиге ``δ`` для выбранной статистики."""
+    statistic = statistic.upper()
+    if statistic == 'SN':
+        return sign_step_distribution_shift(n, delta, distribution)
+    if statistic == 'SR':
+        return signed_rank_step_distribution_shift(
+            n, delta, distribution,
+            method=method, n_sim=n_sim, seed=seed,
+            quadrature_points=quadrature_points,
+        )
+    raise ValueError(
+        f"statistic должен быть 'SN' или 'SR', получено {statistic!r}"
+    )
+
+
+def reference_k(
+    n: int,
+    delta: float,
+    *,
+    statistic: str = 'SN',
+    distribution: str = 'normal',
+    method: str = 'auto',
+    n_sim: int = 200_000,
+    seed: Optional[int] = None,
+) -> float:
+    """
+    Референсное значение ``k`` из целевого сдвига ``δ``: ``k = E[Z_δ]/2``.
+
+    В книге правило ``k = ½δ`` сформулировано для **параметрической** карты на
+    нормальной теории: «k is typically chosen relative to the size of the
+    shift that we want to detect, that is, k = ½δ» (Lucas, 1985; Montgomery,
+    2009; § 3.2.2, стр. 71). Для непараметрических ``SN``/``SR`` книга задаёт
+    лишь порядок «``k`` — первым, обычно малым» и отсылает к § 3.2.2
+    (§ 4.2.2.3.2, стр. 205; § 4.3.2, стр. 232). Поэтому здесь используется
+    **аналог** этого правила, применённый к масштабу статистики: половина её
+    ожидаемого приращения при сдвиге ``δ``,
+
+        k = E[Z_δ] / 2,   например E[SN_δ] = n(2p − 1),  p = P(X ≥ μ₀ | δ)
+
+    (``E[SN]`` — табл. 4.1, стр. 193). Это не формула книги, а перенос её
+    нормального правила на непараметрическую статистику.
+
+    Parameters
+    ----------
+    n : int
+        Размер подгруппы.
+    delta : float
+        Целевой сдвиг в единицах σ (``δ ≠ 0``).
+    statistic : {'SN', 'SR'}, default='SN'
+        Знаковая или знаково-ранговая статистика.
+    distribution : str, default='normal'
+        Распределение процесса.
+    method, n_sim, seed
+        Параметры распределения ``SR`` под сдвигом (см.
+        ``signed_rank_step_distribution_shift``).
+
+    Returns
+    -------
+    float
+        Половина ожидаемого приращения статистики (``> 0`` при ``δ > 0``).
+    """
+    if delta == 0:
+        raise ValueError(
+            'Целевой сдвиг δ должен быть отличен от 0: '
+            'в IC E[Z] = 0 и референсное k не определено'
+        )
+    values, probabilities = _shift_step_distribution(
+        n, delta, statistic, distribution,
+        method=method, n_sim=n_sim, seed=seed,
+    )
+    mean, _ = _moments(values, probabilities)
+    return mean / 2.0
+
+
+@dataclass
+class DesignKHResult:
+    """
+    Результат совместного дизайна ``(k, h)``.
+
+    Attributes
+    ----------
+    k, h : float
+        Найденный дизайн.
+    arl_ic : float
+        Достигнутая ``ARL_IC`` (в IC, ``δ = 0``).
+    arl_ooc : float
+        Значение критерия ``ARL_OOC`` — максимум по целевым ``deltas``.
+    target_arl : float
+        Номинальная ``ARL_IC``.
+    deltas : tuple of float
+        Целевые сдвиги (критерий — минимум максимального ``ARL_OOC``).
+    statistic, sided, distribution : str
+        Описание карты.
+    n : int, optional
+        Размер подгруппы.
+    n_k, n_evaluated : int
+        Число проверенных ``k`` и суммарно просчитанных ``(k, h)``.
+    ooc_by_delta : dict
+        ``ARL_OOC`` по каждому целевому сдвигу для выбранного дизайна.
+    table : pandas.DataFrame
+        Полная сетка: ``k``, ``h``, ``arl_ic``, ``arl_ooc``,
+        ``relative_error_ic``, ``feasible``.
+    note : str
+        Пояснение (достижимость, выбранная сетка ``k``).
+    """
+
+    k: float
+    h: float
+    arl_ic: float
+    arl_ooc: float
+    target_arl: float
+    deltas: Tuple[float, ...]
+    statistic: str
+    sided: str
+    distribution: str
+    n: Optional[int]
+    n_k: int
+    n_evaluated: int
+    ooc_by_delta: Dict[float, float]
+    table: pd.DataFrame
+    note: str = ''
+
+    @property
+    def relative_error_ic(self) -> float:
+        """Относительное отклонение достигнутой ``ARL_IC`` от номинала."""
+        return abs(self.arl_ic - self.target_arl) / self.target_arl
+
+    def summary(self) -> Dict:
+        """Краткая сводка дизайна."""
+        return {
+            'statistic': self.statistic,
+            'n': self.n,
+            'k': self.k,
+            'h': self.h,
+            'ARL_IC': self.arl_ic,
+            'ARL_OOC': self.arl_ooc,
+            'target_ARL': self.target_arl,
+            'relative_error_ic': self.relative_error_ic,
+            'deltas': self.deltas,
+            'ooc_by_delta': dict(self.ooc_by_delta),
+            'sided': self.sided,
+            'n_k': self.n_k,
+            'n_evaluated': self.n_evaluated,
+            'note': self.note,
+        }
+
+
+def _ooc_arl(
+    ooc_distributions: Dict[float, Tuple[np.ndarray, np.ndarray]],
+    k: float,
+    h: float,
+    sided: str,
+) -> Tuple[float, Dict[float, float]]:
+    """``ARL_OOC`` по всем целевым сдвигам; критерий — максимум."""
+    by_delta: Dict[float, float] = {}
+    for delta, (values, probabilities) in ooc_distributions.items():
+        try:
+            by_delta[delta] = cached_arl(
+                values, probabilities, k, h, sided=sided
+            )
+        except ValueError:
+            by_delta[delta] = inf
+    criterion = max(by_delta.values()) if by_delta else inf
+    return criterion, by_delta
+
+
+def design_kh(
+    n: int,
+    target_arl: float,
+    delta: Union[float, Sequence[float]],
+    *,
+    statistic: str = 'SN',
+    sided: str = 'two',
+    distribution: str = 'normal',
+    k_values: Optional[Iterable[float]] = None,
+    k_fractions: Sequence[float] = (0.25, 0.375, 0.5, 0.625, 0.75, 1.0),
+    k_step: Optional[float] = None,
+    tol: float = 0.10,
+    ic_rule: str = 'conservative',
+    method: str = 'auto',
+    n_sim: int = 200_000,
+    seed: Optional[int] = None,
+    quadrature_points: int = 2_001,
+    max_candidates: int = 5_000,
+) -> DesignKHResult:
+    """
+    Совместный дизайн ``(k, h)`` под номинальный ``ARL_IC`` и сдвиг ``δ``.
+
+    Процедура книги (§ 3.2.2, стр. 71–72): ``k`` выбирается первым, затем
+    ``h`` — так, чтобы достигался номинальный ``ARL_IC``; оптимальной
+    считается пара с минимальным ``ARL_OOC`` при фиксированном ``ARL_IC`` и
+    заданном сдвиге ``δ``: «the optimal pair is that for which the ARL_OOC
+    is the lowest». Когда ``δ`` задан сеткой, берётся минимум максимума
+    ``ARL_OOC`` по сетке (минимакс) — это **обобщение** критерия книги,
+    рассчитанного на один сдвиг, а не процедура из книги.
+
+    При ``k_values=None`` кандидаты строятся из ожидаемого приращения
+    статистики при сдвиге: ``k = frac · E[Z_δ]`` для ``frac`` из
+    ``k_fractions`` (по умолчанию — от ``0.25`` до ``1.0``); это
+    непараметрический аналог правила ``k = δ/2`` (§ 3.2.2, стр. 71, см.
+    ``reference_k``).
+
+    Parameters
+    ----------
+    n : int
+        Размер подгруппы.
+    target_arl : float
+        Номинальная ``ARL_IC`` (например, 370 или 500).
+    delta : float or sequence of float
+        Целевой сдвиг (сдвиги) в единицах σ; ``δ = 0`` недопустим.
+    statistic : {'SN', 'SR'}, default='SN'
+        Статистика карты.
+    sided : {'upper', 'lower', 'two'}, default='two'
+        Тип карты.
+    distribution : str, default='normal'
+        Распределение процесса при сдвиге.
+    k_values : iterable of float, optional
+        Явная сетка ``k`` (перебивает ``k_fractions``).
+    k_fractions : sequence of float, default=(0.25, …, 1.0)
+        Доли ``E[Z_δ]`` для автоматической сетки ``k``.
+    k_step : float, optional
+        Шаг решётки для кандидатов ``k``. По умолчанию берётся шаг решётки
+        значений статистики (``2`` для ``SN``/``SR``, т. е. ``k`` целые при
+        ``k_step = step/2 = 1``); при слишком узком диапазоне ``k`` шаг
+        последовательно уменьшается вдвое. Явная сетка ``k_values``
+        используется без привязки к решётке.
+    tol : float, default=0.10
+        Допуск по относительному отклонению ``ARL_IC`` от номинала: ``k``,
+        для которого ``h`` не удаётся настроить в этих пределах, помечается
+        недопустимым и не участвует в выборе оптимума.
+    ic_rule : {'conservative', 'nearest'}, default='conservative'
+        Правило достижения номинала при подборе ``h``: ``conservative`` —
+        ``ARL_IC ≤ номинала`` (книга, стр. 71), ``nearest`` — минимум
+        отклонения по модулю.
+    method, n_sim, seed, quadrature_points
+        Параметры распределения ``SR`` под сдвигом.
+    max_candidates : int, default=5000
+        Предохранитель перебора ``h`` внутри ``design_h``.
+
+    Returns
+    -------
+    DesignKHResult
+        Оптимальная пара ``(k, h)``, её характеристики и полная сетка.
+
+    Notes
+    -----
+    ``ARL(h)`` при фиксированном ``k`` — ступенчатая функция (решётчатые
+    ``SN``/``SR``), поэтому ``ARL_IC`` может быть недостижим точно. При
+    ``k``, при котором сигнал недостижим (``k ≥ max|Z|``), вариант
+    пропускается. Дизайн — только Case K (``μ₀`` известна). Готовой таблицы
+    ``(h, k)`` для ``n = 10`` (Amin, Reynolds & Bakir, 1995, табл. 5) в
+    книге нет — на неё дана только ссылка (§ 4.3.2, стр. 232), поэтому
+    ``(k, h)`` вычисляются движком.
+
+    Ссылки: § 3.2.2, стр. 67–72 (``k``, минимум ``ARL_OOC``, консервативный
+    ``h``); § 4.2.2, стр. 202–206 (определения ур. 4.7–4.12); § 4.3.2,
+    стр. 232–238 (порядок дизайна и примеры).
+    """
+    statistic = statistic.upper()
+    if statistic not in {'SN', 'SR'}:
+        raise ValueError(
+            f"statistic должен быть 'SN' или 'SR', получено {statistic!r}"
+        )
+    if target_arl <= 1:
+        raise ValueError(
+            f'Целевая ARL должна быть > 1, получено {target_arl}'
+        )
+    if statistic == 'SR' and n < 2:
+        raise ValueError(
+            f'Для CUSUM-SR размер подгруппы должен быть ≥ 2, получено {n}'
+        )
+    if statistic == 'SN' and n < 1:
+        raise ValueError(
+            f'Для CUSUM-SN размер подгруппы должен быть ≥ 1, получено {n}'
+        )
+    if tol <= 0:
+        raise ValueError(f'Допуск tol должен быть > 0, получено {tol}')
+
+    if isinstance(delta, (int, float, np.floating)):
+        deltas: Tuple[float, ...] = (float(delta),)
+    else:
+        deltas = tuple(float(value) for value in delta)
+    if not deltas:
+        raise ValueError('Нужен хотя бы один целевой сдвиг δ')
+    if any(value == 0 for value in deltas):
+        raise ValueError(
+            'Целевые сдвиги должны быть отличны от 0 (в IC E[Z] = 0)'
+        )
+
+    ic_values, ic_probabilities = _shift_step_distribution(
+        n, 0.0, statistic, distribution
+    )
+    ooc_distributions = {
+        value: _shift_step_distribution(
+            n, value, statistic, distribution,
+            method=method, n_sim=n_sim, seed=seed,
+            quadrature_points=quadrature_points,
+        )
+        for value in deltas
+    }
+
+    max_absolute = float(np.max(np.abs(ic_values)))
+
+    if k_values is not None:
+        candidates: List[float] = sorted(
+            {float(value) for value in k_values}
+        )
+        grid_note = 'задана явно'
+    else:
+        means = [
+            _moments(*ooc_distributions[value])[0] for value in deltas
+        ]
+        reference_mean = max(means)
+        if reference_mean <= 0:
+            raise ValueError(
+                'Ожидаемое приращение статистики при сдвиге не положительно; '
+                'проверьте знак δ относительно направления карты'
+            )
+        raw = [
+            fraction * reference_mean
+            for fraction in k_fractions
+            if fraction * reference_mean > 0
+        ]
+        # Шаг решётки статистики: состояния CUSUM должны лежать на
+        # конечной решётке, иначе k «дробит» пространство состояний.
+        z_step = _values_step(ic_values)
+        if z_step <= 0:
+            z_step = 1.0
+        if k_step is None or k_step <= 0:
+            k_step = z_step / 2.0
+        snapped: List[float] = []
+        step = k_step
+        for _ in range(3):
+            snapped = sorted({
+                round(value / step) * step
+                for value in raw
+                if 0 < round(value / step) * step < max_absolute
+            })
+            if snapped:
+                break
+            step /= 2.0
+        candidates = snapped
+        grid_note = (
+            'k = frac·E[Z_δ], frac ∈ '
+            + ', '.join(f'{fraction:g}' for fraction in k_fractions)
+            + f'; шаг решётки k = {step:g}'
+        )
+
+    candidates = [value for value in candidates
+                  if 0 < value < max_absolute]
+    if not candidates:
+        raise ValueError(
+            'Не осталось допустимых k: все кандидаты вне (0, max|Z|)'
+        )
+
+    records: List[Dict[str, Any]] = []
+    evaluated = 0
+    for k in candidates:
+        try:
+            design = design_h(
+                ic_values, ic_probabilities, target_arl, k,
+                sided=sided, statistic=statistic, n=n,
+                max_candidates=max_candidates, ic_rule=ic_rule,
+            )
+        except ValueError:
+            records.append({
+                'k': k, 'h': np.nan, 'arl_ic': np.inf, 'arl_ooc': np.inf,
+                'relative_error_ic': np.inf, 'feasible': False,
+            })
+            continue
+
+        evaluated += design.n_evaluated
+        arl_ooc, _ = _ooc_arl(ooc_distributions, k, design.h, sided)
+        relative_error = design.relative_error
+        records.append({
+            'k': k,
+            'h': design.h,
+            'arl_ic': design.arl,
+            'arl_ooc': arl_ooc,
+            'relative_error_ic': relative_error,
+            'feasible': bool(relative_error <= tol),
+        })
+
+    table = pd.DataFrame(records)
+    finite = table[np.isfinite(table['arl_ooc'])]
+    feasible = finite[finite['feasible']]
+
+    if not feasible.empty:
+        best = feasible.sort_values(
+            ['arl_ooc', 'relative_error_ic', 'k']
+        ).iloc[0]
+        note = ''
+    elif not finite.empty:
+        best = finite.sort_values(
+            ['relative_error_ic', 'arl_ooc', 'k']
+        ).iloc[0]
+        note = (
+            f'Ни один k не даёт ARL_IC в пределах {tol:.0%} от номинала: '
+            'выбран вариант с наименьшим отклонением'
+        )
+    else:
+        raise ValueError(
+            'Ни один кандидат k не даёт конечной ARL при заданном сдвиге'
+        )
+
+    best_k = float(best['k'])
+    best_h = float(best['h'])
+    _, ooc_by_delta = _ooc_arl(ooc_distributions, best_k, best_h, sided)
+
+    if not note:
+        note = grid_note
+    else:
+        note = f'{note}; сетка k: {grid_note}'
+
+    return DesignKHResult(
+        k=best_k,
+        h=best_h,
+        arl_ic=float(best['arl_ic']),
+        arl_ooc=float(best['arl_ooc']),
+        target_arl=float(target_arl),
+        deltas=deltas,
+        statistic=statistic,
+        sided=sided,
+        distribution=distribution,
+        n=n,
+        n_k=len(candidates),
+        n_evaluated=evaluated,
+        ooc_by_delta=ooc_by_delta,
+        table=table,
+        note=note,
+    )
+
+
+def design_sign_kh(
+    n: int,
+    target_arl: float,
+    delta: Union[float, Sequence[float]],
+    *,
+    sided: str = 'two',
+    distribution: str = 'normal',
+    **kwargs: Any,
+) -> DesignKHResult:
+    """Совместный дизайн ``(k, h)`` для CUSUM-SN."""
+    return design_kh(
+        n, target_arl, delta, statistic='SN', sided=sided,
+        distribution=distribution, **kwargs,
+    )
+
+
+def design_signed_rank_kh(
+    n: int,
+    target_arl: float,
+    delta: Union[float, Sequence[float]],
+    *,
+    sided: str = 'two',
+    distribution: str = 'normal',
+    **kwargs: Any,
+) -> DesignKHResult:
+    """Совместный дизайн ``(k, h)`` для CUSUM-SR."""
+    return design_kh(
+        n, target_arl, delta, statistic='SR', sided=sided,
+        distribution=distribution, **kwargs,
     )

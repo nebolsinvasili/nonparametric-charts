@@ -25,13 +25,18 @@ from nonparametric_charts.utils.run_length import (
     signed_rank_step_distribution,
 )
 from nonparametric_charts.utils.run_length_design import (
+    DesignKHResult,
     cached_arl,
     clear_run_length_cache,
     compare_arl_methods,
     design_h,
+    design_kh,
     design_sign_h,
+    design_sign_kh,
     design_signed_rank_h,
+    design_signed_rank_kh,
     oc_curve,
+    reference_k,
     run_length_cache_info,
     siegmund_arl,
     sign_step_distribution_shift,
@@ -243,11 +248,41 @@ def test_compare_arl_methods_table() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_design_sign_h_example_4_8() -> None:
-    """Пример 4.8: ``n=5, k=1, ARL=16.615`` → ``h=4``."""
-    result = design_sign_h(5, 16.615, 1, sided='upper')
+    """Пример 4.8: ``n=5, k=1`` → ``h=4``, ``ARL≈16.615``.
+
+    Номинал берётся чуть выше книжного ``16.615``: точная ``ARL`` при
+    ``h=4`` равна ``16.6154``, и консервативное правило (``ARL ≤ номинала``)
+    выбирает наибольшее ``h`` снизу.
+    """
+    result = design_sign_h(5, 16.62, 1, sided='upper')
     assert result.h == pytest.approx(4.0)
     assert result.arl == pytest.approx(16.615, rel=1e-3)
     assert result.relative_error < 1e-3
+
+
+def test_design_h_nearest_rule_ignores_side() -> None:
+    """``ic_rule='nearest'`` возвращает ближайшее по модулю значение."""
+    result = design_sign_h(5, 16.615, 1, sided='upper', ic_rule='nearest')
+    assert result.h == pytest.approx(4.0)
+    assert result.arl == pytest.approx(16.615, rel=1e-3)
+
+
+def test_design_h_conservative_never_exceeds_nominal() -> None:
+    """Консервативное правило: достигнутая ``ARL_IC ≤`` номинала."""
+    result = design_sign_h(10, 500, 7, sided='two')
+    assert result.arl <= 500.0
+    assert result.h == pytest.approx(2.0)
+    # Ближайшее (по модулю) дало бы 506.52 при h=3 — выше номинала.
+    nearest = design_sign_h(10, 500, 7, sided='two', ic_rule='nearest')
+    assert nearest.arl > 500.0
+    assert nearest.h == pytest.approx(3.0)
+
+
+def test_design_h_conservative_fallback_note() -> None:
+    """Если ни одно ``h`` не даёт ``ARL ≤`` номинала — пометка в ``note``."""
+    result = design_sign_h(10, 5.0, 6, sided='two')
+    assert result.arl > 5.0
+    assert 'сверху' in result.note
 
 
 def test_design_signed_rank_h_example_4_10() -> None:
@@ -340,7 +375,7 @@ def test_chart_design_h_uses_chart_parameters() -> None:
         pd.DataFrame(rows, columns=[f'x{i}' for i in range(1, 6)]),
         sample_size=5, target_value=0.0, k=1.0, h=4.0,
     )
-    sign_result = sign_chart.design_h(16.615, sided='upper')
+    sign_result = sign_chart.design_h(16.62, sided='upper')
     assert sign_result.h == pytest.approx(4.0)
 
     rows = [[1.0, 2.0, 3.0, 4.0]] * 5
@@ -403,3 +438,122 @@ def test_clear_run_length_cache() -> None:
     assert run_length_cache_info().currsize >= 1
     clear_run_length_cache()
     assert run_length_cache_info().currsize == 0
+
+
+# --------------------------------------------------------------------------- #
+#  Совместный дизайн (k, h)
+# --------------------------------------------------------------------------- #
+
+def test_reference_k_is_half_expected_step() -> None:
+    """``k = E[Z_δ]/2``; для ``n=1`` ``E[SN] = 2Φ(δ) − 1``."""
+    from scipy.stats import norm
+
+    delta = 1.0
+    expected = (2 * norm.cdf(delta) - 1) / 2
+    assert reference_k(1, delta, statistic='SN') == pytest.approx(expected)
+
+
+def test_reference_k_requires_nonzero_delta() -> None:
+    with pytest.raises(ValueError, match='δ'):
+        reference_k(5, 0.0, statistic='SN')
+
+
+def test_design_sign_kh_returns_optimal_design() -> None:
+    """CUSUM-SN: найденная пара допустима и лучше по ``ARL_OOC`` прочих."""
+    result = design_sign_kh(10, 500, 1.0, sided='two')
+    assert isinstance(result, DesignKHResult)
+    assert result.k > 0
+    assert result.h > 0
+    assert np.isfinite(result.arl_ic)
+    assert np.isfinite(result.arl_ooc)
+    assert result.arl_ooc < result.arl_ic
+    assert result.n_k == result.table['k'].nunique()
+    assert {'k', 'h', 'arl_ic', 'arl_ooc', 'feasible'} <= set(result.table)
+    # Выбранная пара — минимум ARL_OOC среди допустимых.
+    feasible = result.table[result.table['feasible']]
+    assert result.arl_ooc == pytest.approx(feasible['arl_ooc'].min())
+    assert result.note
+
+
+def test_design_signed_rank_kh_small_n() -> None:
+    """CUSUM-SR: ``n=4`` — конечный дизайн, ``ARL_OOC < ARL_IC``."""
+    result = design_signed_rank_kh(4, 500, 1.0, sided='two')
+    assert result.statistic == 'SR'
+    assert result.k > 0 and result.h > 0
+    assert result.arl_ooc < result.arl_ic
+    assert result.ooc_by_delta[1.0] == pytest.approx(result.arl_ooc)
+
+
+def test_design_kh_minimax_over_deltas() -> None:
+    """Критерий для сетки сдвигов — максимум ``ARL_OOC`` по ``δ``."""
+    result = design_sign_kh(10, 500, (0.5, 1.0, 1.5), sided='two')
+    assert set(result.deltas) == {0.5, 1.0, 1.5}
+    assert set(result.ooc_by_delta) == {0.5, 1.0, 1.5}
+    assert result.arl_ooc == pytest.approx(max(result.ooc_by_delta.values()))
+
+
+def test_design_kh_explicit_grid_is_respected() -> None:
+    """Явная сетка ``k_values`` определяет проверяемые кандидаты."""
+    result = design_kh(
+        10, 500, 1.0, statistic='SN',
+        k_values=[2.0, 4.0, 6.0], tol=0.5,
+    )
+    assert set(result.table['k']) == {2.0, 4.0, 6.0}
+    assert result.k in {2.0, 4.0, 6.0}
+
+
+def test_design_kh_grid_snaps_to_statistic_lattice() -> None:
+    """Автоматические ``k`` привязаны к решётке статистики (целые для n=10)."""
+    result = design_sign_kh(10, 500, 1.0)
+    for value in result.table['k']:
+        assert value == pytest.approx(round(value))
+
+
+def test_design_kh_smallest_n_still_works() -> None:
+    """``n=1``: единственный допустимый ``k = 0.5`` (``SN = ±1``)."""
+    result = design_sign_kh(1, 370, 1.0)
+    assert result.k == pytest.approx(0.5)
+    assert result.h > 0
+
+
+def test_design_kh_validates_arguments() -> None:
+    with pytest.raises(ValueError, match='SN'):
+        design_kh(5, 500, 1.0, statistic='XX')
+    with pytest.raises(ValueError, match='> 1'):
+        design_kh(5, 1.0, 1.0, statistic='SN')
+    with pytest.raises(ValueError, match='отличны'):
+        design_kh(5, 500, 0.0, statistic='SN')
+    with pytest.raises(ValueError, match='tol'):
+        design_kh(5, 500, 1.0, statistic='SN', tol=0.0)
+    with pytest.raises(ValueError, match='подгруппы'):
+        design_kh(1, 500, 1.0, statistic='SR')
+
+
+def test_design_kh_ic_matches_direct_engine() -> None:
+    """Достигнутая ``ARL_IC`` совпадает с прямым расчётом движка."""
+    result = design_sign_kh(10, 500, 1.0)
+    direct = cusum_sign_run_length(
+        10, result.k, result.h, sided='two'
+    ).arl
+    assert result.arl_ic == pytest.approx(direct, rel=1e-12)
+
+
+def test_chart_design_kh_uses_chart_size() -> None:
+    """Метод ``design_kh()`` у карт использует ``sample_size`` карты."""
+    rows = [[1.0, 1.0, 1.0, 1.0, -1.0]] * 5
+    sign_chart = CusumSignChart(
+        pd.DataFrame(rows, columns=[f'x{i}' for i in range(1, 6)]),
+        sample_size=5, target_value=0.0, k=1.0, h=4.0,
+    )
+    sign_result = sign_chart.design_kh(500, 1.0)
+    assert sign_result.n == 5
+    assert sign_result.statistic == 'SN'
+
+    rows = [[1.0, 2.0, 3.0, 4.0]] * 5
+    rank_chart = CusumSignedRankChart(
+        pd.DataFrame(rows, columns=[f'x{i}' for i in range(1, 5)]),
+        sample_size=4, target_value=0.0, k=2.0, h=6.0,
+    )
+    rank_result = rank_chart.design_kh(500, 1.0)
+    assert rank_result.n == 4
+    assert rank_result.statistic == 'SR'

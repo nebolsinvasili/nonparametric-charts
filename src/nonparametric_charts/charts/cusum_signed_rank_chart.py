@@ -53,6 +53,9 @@ from nonparametric_charts.base.base_chart import BaseControlChart
 from nonparametric_charts.utils.statistics import signed_rank_details
 from nonparametric_charts.utils.run_length import cusum_signed_rank_run_length
 from nonparametric_charts.utils.run_length_design import design_signed_rank_h
+from nonparametric_charts.utils.run_length_design import (
+    design_signed_rank_kh,
+)
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -460,4 +463,46 @@ class CusumSignedRankChart(BaseControlChart):
         return design_signed_rank_h(
             self.sample_size, target_arl, self.k,
             sided=sided, max_candidates=max_candidates,
+        )
+
+    def design_kh(
+        self,
+        target_arl: float,
+        delta,
+        sided: str = 'two',
+        *,
+        distribution: str = 'normal',
+        **kwargs,
+    ):
+        """
+        Совместный дизайн ``(k, h)`` под целевой сдвиг и номинальный ``ARL``.
+
+        Parameters
+        ----------
+        target_arl : float
+            Номинальная ``ARL_IC`` (например, 370 или 500).
+        delta : float or sequence of float
+            Целевой сдвиг (сдвиги) медианы в единицах σ; ``δ ≠ 0``.
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        distribution : str, default='normal'
+            Распределение процесса при сдвиге.
+        **kwargs
+            Дополнительные параметры ``design_kh`` (``k_values``,
+            ``k_fractions``, ``tol`` и т. д.).
+
+        Returns
+        -------
+        DesignKHResult
+            Оптимальная пара ``(k, h)`` и полная сетка.
+
+        Notes
+        -----
+        ``k`` выбирается первым (аналог ``k = δ/2``), ``h`` — под номинал;
+        критерий — минимум ``ARL_OOC``. § 3.2.2, стр. 67–72;
+        § 4.3.2, стр. 232–233.
+        """
+        return design_signed_rank_kh(
+            self.sample_size, target_arl, delta,
+            sided=sided, distribution=distribution, **kwargs,
         )
