@@ -15,6 +15,7 @@
 # data2 — табл. 4.6 (стр. 22).
 # Эталон: npSPC (CER-UFBA/npSPC, функциями cusum_sn / cusum_sr).
 #
+# Если R-окружения нет: bash experiments/cusum/setup_renv.sh
 # Запуск из корня репозитория:
 #   R_LIBS=/tmp/opencode/renv/lib/R/library \
 #     /tmp/opencode/renv/bin/Rscript experiments/cusum/05_cross_validation.R

@@ -84,7 +84,13 @@ results/        # сгенерированные артефакты (tests/, exa
 - Тесты кода: `pytest` (каталог `tests/`); долгие проверки помечены
   `@pytest.mark.slow` и пропускаются командой `npc test --fast`
   (`npc test --slow` — наоборот, только они).
-- Опыты: `experiments/{sn,sr}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
+- Опыты: `experiments/{sn,sr,cusum}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
+  R-окружение для сверок CUSUM — `bash experiments/cusum/setup_renv.sh`
+  (идемпотентно; `/tmp` очищается, скрипт восстанавливает всё с нуля).
+- Сверки с внешними пакетами хранят **два эталона**: «сырой» вызов чужой
+  функции и «исправленный» (по документированным дефектам чужого кода).
+  Расхождение с сырым эталоном не считается багом своей библиотеки, пока не
+  проверено против исправленного и независимой имитации.
 - Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`
   (`--fast`/`--slow`), `npc examples`, `npc experiment {sn|sr|cusum|all}`;
   реализация — `src/nonparametric_charts/cli.py`.

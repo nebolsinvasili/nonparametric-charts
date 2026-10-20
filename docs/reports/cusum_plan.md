@@ -259,7 +259,8 @@ R-сверкой; в отчёт — как расхождение с перво�
   `cusum_performance.png`);
   `experiments/cusum/05_cross_validation.py` + `.R` — кросс-валидация против
   `npSPC` (промежуточные CSV — `xval/`, отчёт —
-  `results/experiments/cusum_cross_validation.txt`)
+  `results/experiments/cusum_cross_validation.txt`); `setup_renv.sh` —
+  восстановление R-окружения с `npSPC` одной командой
 - Отчёт: `docs/reports/cusum_verification.tex/.pdf` (планируется)
 
 ## Журнал прогресса

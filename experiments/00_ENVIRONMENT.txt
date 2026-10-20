@@ -28,6 +28,25 @@ A. Python-часть
 ------------------------------------------------------------------------
 B. Окружение R (без прав суперпользователя)
 ------------------------------------------------------------------------
+Для сверок CUSUM с пакетом npSPC есть готовый идемпотентный скрипт
+(ставит micromamba, R, dplyr/purrr, собирает npSPC из GitHub):
+
+  bash experiments/cusum/setup_renv.sh
+
+Пути по умолчанию: RENV=/tmp/opencode/renv, MAMBA_DIR=/tmp/opencode/mm
+(переопределяются одноимёнными переменными окружения).
+
+Проверка одной строкой (код возврата 0 — R и пакет на месте):
+
+  R_LIBS=$RENV/lib/R/library $RENV/bin/Rscript -e 'library(npSPC)'
+
+Если команда падает, различайте причину:
+
+  command -v $RENV/bin/Rscript || echo "нет R: создайте окружение"
+  R_LIBS=$RENV/lib/R/library $RENV/bin/Rscript \
+      -e 'cat(requireNamespace("npSPC", quietly = TRUE), "\n")'
+
+Ниже — ручная установка (если скрипт недоступен).
 Используется micromamba (conda-forge). Если micromamba не установлена,
 её можно поставить локально, например:
 

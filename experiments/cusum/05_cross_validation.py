@@ -21,6 +21,9 @@
         RSCRIPT=/tmp/opencode/renv/bin/Rscript \\
         poetry run python experiments/cusum/05_cross_validation.py
 
+Если R-окружения нет, восстановить его:
+    bash experiments/cusum/setup_renv.sh
+
 Без R (использует ранее выгруженные CSV):
     poetry run python experiments/cusum/05_cross_validation.py --no-r
 """
