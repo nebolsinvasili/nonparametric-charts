@@ -905,3 +905,33 @@
   `experiments/00_ENVIRONMENT.txt`, `.opencode/rules/reference.md`,
   `docs/reports/cusum_plan.md`, `experiments/cusum/05_cross_validation.{py,R}`.
 
+
+### 2026-10-20 — CUSUM: документирование и отчёт (этап 3b.11)
+
+- **Что сделано:**
+  - Новый отчёт `docs/reports/cusum_verification.tex/.pdf` (13 стр.):
+    математические основы §4.2.2 (ур. 4.7–4.12, опечатка 4.11), марковская
+    цепь и уравнение восстановления, приближения Сигмунда/Вальда, реализация
+    (`Cusum*Chart`, `utils/run_length*`, дизайн, производительность),
+    R-реализация `npSPC` с дефектами, сопоставление, примеры 4.6–4.10,
+    согласованность методов `ARL`, точная квадратура `SR`, OC-кривые,
+    таблицы дизайнов `(k,h)`, открытое расхождение рис. 4.6, кросс-валидация
+    Python↔R, выводы и рекомендации.
+  - `experiments/cusum/06_gen_figdata.py` — генератор `docs/reports/cusum_macros.tex`
+    (OC-кривые SN/SR по распределениям, `ARL_IC(h)` для SN/SR); координаты
+    в отчёте не редактируются вручную.
+  - `docs/reports/Makefile`: цель `make cusum`, отчёт добавлен в `TARGETS`.
+- **Результаты/акценты отчёта:** рис. 4.5 — `h=4`, `ARL=464.98` (книга
+  `454.24`, ошибка 2.4%); рис. 4.6 — подбор даёт `h=14`, `ARL=486.87`, а при
+  книжном `h=24` точная двусторонняя `ARL≈80 600` (односторонняя `≈161 200`),
+  а не `500.30`; статистики с `npSPC` — 0 расхождений, сигналы 918/918 против
+  исправленной рекурсии; производительность: SN `(10,6,4)` ≈2 мс,
+  SR `(10,41,24)` ≈227 мс (из них ≈219 мс — развёртка PMF).
+- **Затронуто:** `docs/reports/cusum_verification.tex/.pdf`,
+  `docs/reports/cusum_macros.tex`, `docs/reports/Makefile`,
+  `experiments/cusum/06_gen_figdata.py`, `docs/reports/cusum_plan.md`,
+  `.opencode/rules/reference.md`, `.opencode/memory/{book-map,tasks-completed,branches}.md`.
+- **Проверка:** `make cusum` — без ошибок, 13 стр.; `docs/reports/cusum_macros.tex`
+  пересобирается скриптом; `poetry run pytest -q` — зелёный (см. ниже).
+- **Далее:** ноутбук `notebooks/cusum_analysis.ipynb` (единственный
+  невыполненный пункт DoD), затем слияние ветки `feat/cusum-run-length`.

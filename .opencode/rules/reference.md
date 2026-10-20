@@ -55,7 +55,9 @@ docs/
   reports/                    # отчёты и всё, что их собирает
     sn_verification.tex/.pdf  # отчёт о верификации знаковой карты
     sr_verification.tex/.pdf  # отчёт о верификации знаково-ранговой карты
+    cusum_verification.tex/.pdf # отчёт о верификации CUSUM (SN/SR)
     sr_macros.tex             # генерируемые макросы графиков SR
+    cusum_macros.tex          # генерируемые макросы графиков CUSUM
     Makefile                  # сборка pdflatex (cd docs/reports && make)
     build/                    # вспомогательные файлы сборки (.gitignore)
     scripts/                  # генераторы координат/таблиц
