@@ -63,6 +63,11 @@ except ImportError:  # fallback: локальная реализация
         positive, negative, _ = sign_counts(values, target_value)
         return positive - negative
 
+from nonparametric_charts.utils.run_length import cusum_sign_run_length
+from nonparametric_charts.utils.plotting import plot_run_length as _plot_run_length
+from nonparametric_charts.utils.run_length_design import design_sign_h
+from nonparametric_charts.utils.run_length_design import design_sign_kh
+
 from nonparametric_charts.utils.plot_style import (
     ACCENT,
     ALERT,
@@ -397,3 +402,169 @@ class CusumSignChart(BaseControlChart):
             'first_signal': first,
             'violations': self.violations,
         }
+
+    # ------------------------------------------------------------------ #
+    #  Длина серии (RL)
+    # ------------------------------------------------------------------ #
+
+    def run_length(
+        self,
+        sided: str = 'two',
+        *,
+        p: float = 0.5,
+        max_quantile: float = 0.9999,
+    ):
+        """
+        Распределение длины серии CUSUM-SN (марковский метод).
+
+        Parameters
+        ----------
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        p : float, default=0.5
+            ``P(X ≥ μ₀)``; в IC ``p = 0.5``.
+        max_quantile : float, default=0.9999
+            Уровень усечения хвоста PMF.
+
+        Returns
+        -------
+        RunLengthResult
+            ``ARL``, ``SDRL``, ``MRL``, перцентили, PMF/CDF.
+
+        Notes
+        -----
+        Ур. 4.9 (стр. 203), ур. 3.22–3.24 (стр. 112). Используются
+        текущие ``k`` и ``h`` карты (после ``calculate_limits`` — их
+        актуальные значения).
+        """
+        return cusum_sign_run_length(
+            self.sample_size, self.k, self.h,
+            sided=sided, p=p, max_quantile=max_quantile,
+        )
+
+    def plot_run_length(
+        self,
+        sided: str = 'two',
+        *,
+        p: float = 0.5,
+        max_quantile: float = 0.9999,
+        figsize: Tuple[float, float] = (10.0, 5.5),
+        title: Optional[str] = None,
+        max_t: Optional[int] = None,
+        save_path: Optional[str] = None,
+    ) -> Tuple[plt.Figure, plt.Axes]:
+        """
+        График распределения длины серии CUSUM-SN (PMF и CDF).
+
+        Parameters
+        ----------
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        p : float, default=0.5
+            ``P(X ≥ μ₀)``; в IC ``p = 0.5``.
+        max_quantile : float, default=0.9999
+            Уровень усечения хвоста PMF.
+        figsize : (float, float), default=(10, 5.5)
+            Размер фигуры.
+        title : str, optional
+            Заголовок; по умолчанию — характеристики RL.
+        max_t : int, optional
+            Показать только ``t ≤ max_t``.
+        save_path : str, optional
+            Путь для сохранения рисунка.
+
+        Returns
+        -------
+        (matplotlib.figure.Figure, matplotlib.axes.Axes)
+            Фигура и ось PMF.
+
+        Notes
+        -----
+        Ур. 4.9 (стр. 203), ур. 3.22–3.24 (стр. 112). Используются
+        текущие ``k`` и ``h`` карты.
+        """
+        result = self.run_length(sided=sided, p=p, max_quantile=max_quantile)
+        return _plot_run_length(
+            result, figsize=figsize, title=title, max_t=max_t,
+            save_path=save_path,
+        )
+
+    def design_h(
+        self,
+        target_arl: float,
+        sided: str = 'two',
+        *,
+        p: float = 0.5,
+        max_candidates: int = 5_000,
+    ):
+        """
+        Подобрать ``h`` под номинальную ``ARL`` в IC.
+
+        Parameters
+        ----------
+        target_arl : float
+            Номинальная ``ARL_IC`` (например, 370 или 500).
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        p : float, default=0.5
+            ``P(X ≥ μ₀)`` в IC.
+        max_candidates : int, default=5000
+            Предохранитель перебора вариантов ``h``.
+
+        Returns
+        -------
+        DesignResult
+            Найденный ``h``, достигнутая ``ARL`` и отклонение от номинала.
+
+        Notes
+        -----
+        ``ARL(h)`` — ступенчатая функция, поэтому номинал может быть
+        недостижим точно; возвращается ближайший вариант. Выбор ``(k, h)``:
+        § 3.2.2, стр. 67; § 4.2.2, стр. 202–203.
+        """
+        return design_sign_h(
+            self.sample_size, target_arl, self.k,
+            sided=sided, p=p, max_candidates=max_candidates,
+        )
+
+    def design_kh(
+        self,
+        target_arl: float,
+        delta,
+        sided: str = 'two',
+        *,
+        distribution: str = 'normal',
+        **kwargs,
+    ):
+        """
+        Совместный дизайн ``(k, h)`` под целевой сдвиг и номинальный ``ARL``.
+
+        Parameters
+        ----------
+        target_arl : float
+            Номинальная ``ARL_IC`` (например, 370 или 500).
+        delta : float or sequence of float
+            Целевой сдвиг (сдвиги) медианы в единицах σ; ``δ ≠ 0``.
+        sided : {'upper', 'lower', 'two'}, default='two'
+            Тип карты.
+        distribution : str, default='normal'
+            Распределение процесса при сдвиге.
+        **kwargs
+            Дополнительные параметры ``design_kh`` (``k_values``,
+            ``k_fractions``, ``tol`` и т. д.).
+
+        Returns
+        -------
+        DesignKHResult
+            Оптимальная пара ``(k, h)`` и полная сетка.
+
+        Notes
+        -----
+        ``k`` выбирается первым (аналог ``k = δ/2``), ``h`` — под номинал;
+        критерий — минимум ``ARL_OOC``. § 3.2.2, стр. 67–72;
+        § 4.3.2, стр. 232–233.
+        """
+        return design_sign_kh(
+            self.sample_size, target_arl, delta,
+            sided=sided, distribution=distribution, **kwargs,
+        )

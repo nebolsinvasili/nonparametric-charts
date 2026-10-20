@@ -668,3 +668,314 @@
 - **Замечено (не трогал):** `utils/plotting.py` (`add_control_lines`,
   `add_zones`, `add_values_on_points`) нигде не импортируется — мёртвый код;
   в `cusum_sign_chart.py` неиспользуемый импорт `ZONE_LINE` (F401).
+
+### 2026-10-19 — 3b.0–3b.1: марковский расчёт длины серии CUSUM
+
+- Что сделано:
+  - зафиксирован чек-лист фазы 3b (3b.0–3b.11) в `docs/reports/cusum_plan.md`;
+  - ADR-023: эталон RL — марковская цепь, остальные методы (симуляция,
+    интегральное уравнение, приближения) — независимые проверки; дизайн
+    `(k, h)` — после движков;
+  - новый `src/nonparametric_charts/utils/run_length.py`: общий движок для
+    дискретного шага (`upper`/`lower`/`two`), состояния по ур. 4.9/4.12,
+    `ARL`/`SDRL`/`MRL`/перцентили/PMF/CDF по ур. 3.22–3.24; распределения
+    `SN` (биномиальное, `p` включая OOC) и `SR` (точное нулевое распределение
+    Уилкоксона); явная ошибка при бесконечной ARL;
+  - `RunLengthResult` с `summary()`; методы `run_length()` у
+    `CusumSignChart` и `CusumSignedRankChart`; экспорты в `utils/__init__.py`;
+  - `tests/test_run_length.py` (12 тестов).
+- Проверка: пример 4.8 — `ARL=16.615`, `SDRL=15.509`, перцентили
+  `2/6/12/23/48`; пример 4.10 — `6.809`, `6.106`, `1/2/5/9/19`; рис. 4.5
+  (двусторонняя) — `ARL=460.3` (в книге `454.2`); `pytest -q` → **147 passed**;
+  `npc examples` → 8/8 `OK`.
+- Замечено: рис. 4.6 (`n=10, k=41, h=24`) по формулам книги даёт
+  `ARL ≈ 79 500`, а не `500.30`; проверять симуляцией и R (3b.2/3b.10).
+
+### 2026-10-19 — 3b.2: симуляция длины серии CUSUM
+
+- Что сделано: `simulate_cusum_run_length` и обёртки для SN/SR в
+  `utils/run_length.py` — Монте-Карло по алгоритму книги, `seed`, `n_rep`,
+  `SE(ARL)`, эмпирические `ARL/SDRL/MRL`/перцентили/PMF/CDF; явная ошибка при
+  недостижимом сигнале (`max_t`); экспорты; 3 теста в `tests/test_run_length.py`.
+- Проверка: пример 4.8 → `ARL=16.69` (точно `16.615`, в пределах 3 SE);
+  рис. 4.5 → `461.05` (точно `460.28`); `pytest -q` → **150 passed**.
+- Далее: 3b.3 — интегральное уравнение/renewal.
+
+### 2026-10-19 — 3b.3: renewal / интегральный метод для RL
+
+- Что сделано: `renewal_cusum_run_length` — независимое распространение
+  распределения по состояниям без обращения `Q`; PMF/CDF, моменты через
+  выживание; общий `_prepare_step_distribution`; проверка достижимости
+  поглощения; 3 теста.
+- Проверка: совпадение с марковским движком на примерах 4.8/4.10 до `1e-10`
+  (ARL/SDRL, перцентили идентичны); `pytest -q` → **153 passed**.
+- Далее: 3b.4/3b.5.
+
+### 2026-10-19 — примеры 4.8 и 4.10 (марковский RL)
+
+- Что сделано: добавлены `examples/example_4_8_cusum_sn_markov.py` и
+  `examples/example_4_10_cusum_sr_markov.py` — пространство состояний, матрица
+  `Q`, вероятности сигнала, RL-характеристики, PMF/CDF-график; общий
+  `plot_run_length` в `examples/_common.py`; `RunLengthResult.transition_matrix`
+  (марковский метод); README обновлён.
+- Проверка: 4.8 — `ARL=16.615`, `SDRL=15.509`, перцентили `2/6/12/23/48`;
+  4.10 — `6.809`, `6.106`, `1/2/5/9/19`; `Q` совпадает с табл. 4.11/4.14;
+  `npc examples` → **10/10 OK**; `pytest -q` → 153 passed.
+
+### 2026-10-19 — 3b.4–3b.6: приближения, OC-кривые, подбор `h`
+
+- Что сделано:
+  - `utils/run_length_design.py`: распределения `SN`/`SR` при сдвиге
+    (`sign_step_distribution_shift`, `signed_rank_step_distribution_shift`),
+    `oc_curve`, приближения `siegmund_arl`/`wald_arl`/`compare_arl_methods`,
+    `design_h` + `design_sign_h`/`design_signed_rank_h`, `DesignResult`;
+    стандартизованные распределения центрируются по медиане, поэтому IC-ARL
+    не зависит от `F`;
+  - методы `design_h()` у `CusumSignChart`/`CusumSignedRankChart`; экспорты;
+  - `tests/test_run_length_design.py` (26 тестов);
+  - `experiments/cusum/01_oc_curves.py` — таблицы и график OC-кривых SN/SR
+    по распределениям.
+- Решение: для точного решётчатого RL `ARL(h)` ступенчатая, поэтому вместо
+  бисекции/Брента — перебор критических `h` с выбором ближайшей ARL.
+- Проверка: пример 4.8 → `h=4`, `ARL=16.615`; пример 4.10 → `h=6`,
+  `ARL=6.809`; рис. 4.5 → `h=4`, `ARL=460.28`; рис. 4.6 (цель 500) →
+  `h=14`, `ARL=480.60` (книжные `h=24`/`500.30` не воспроизводятся);
+  `pytest -q` → **179 passed**; `npc examples` → **10/10 OK**.
+- Далее: 3b.7 — выбор `k` и совместный дизайн `(k, h)`.
+
+### 2026-10-19 — процессные улучшения: `npc experiment cusum`, кэш ARL, точный SR
+
+- Что сделано:
+  - `npc experiment cusum` — запуск всех `experiments/cusum/NN_*.py`;
+    `experiment_scripts()` и тесты `tests/test_cli.py`;
+  - `cached_arl`, `run_length_cache_info`, `clear_run_length_cache` —
+    `lru_cache` по нормированному распределению и `(k, h, sided)` для сеток
+    3b.7; `design_h` использует кэш;
+  - `signed_rank_step_distribution_exact` — точное OOC-распределение `SR`
+    под сдвигом (квадратура по порядковым статистикам `|X|`, узлы
+    Чебышёва—Лобатто); `method='auto'` — точно при `n ≤ 20`;
+  - опыт `experiments/cusum/02_sr_exact_vs_mc.py` — ошибка, сходимость,
+    время, разброс по seed.
+- Проверка: точный метод при `n=20` — ошибка `~10⁻⁸…10⁻⁹` (2001 узел),
+  время `~0.2 с`; Монте-Карло `10⁵` подгрупп — `~10⁻³`; `pytest -q` →
+  **194 passed**; `npc experiment cusum` — без ошибок; `npc examples` —
+  **10/10 OK**.
+- Далее: 3b.7 — сетка `(k, h)` с кэшем.
+
+### 2026-10-19 — этап 3b.7: совместный дизайн `(k, h)` (ADR-024)
+
+- Что сделано (`utils/run_length_design.py`):
+  - `reference_k(n, δ, …, statistic)` — референсное `k = E[Z_δ]/2`: аналог
+    книжного правила `k = δ/2` (§3.2.2, стр. 71) в масштабе статистики
+    (`E[SN_δ] = n(2p−1)`, табл. 4.1, стр. 193); помечено как аналог;
+  - `DesignKHResult`, `design_kh` + обёртки `design_sign_kh`/
+    `design_signed_rank_kh`, методы `design_kh()` у карт, экспорты;
+    кандидаты `k` — доли `E[Z_δ]`, привязаны к решётке статистики
+    (`k_step`), `k ≥ max|Z|` пропускается;
+  - критерий книги: `k` первым, `h` под номинал, минимум `ARL_OOC` при
+    заданном `δ`; для сетки `δ` — минимакс (обобщение).
+  - **шлюз `book-checker` → расхождение устранено:** `design_h` получил
+    `ic_rule='conservative'` (по умолчанию) — наибольшее `h` с
+    `ARL_IC ≤` номинала (стр. 71); fallback сверху помечается в `note`;
+    `ic_rule='nearest'` сохраняет прежнее поведение.
+  - дробное `k` дробило пространство состояний (шаг решётки `10⁻⁶`) —
+    устранено привязкой к решётке.
+- Тесты: `tests/test_run_length_design.py` — `reference_k`, дизайн SN/SR,
+  минимакс, явная сетка `k`, решётка, `n=1`, консервативное правило и
+  fallback, совпадение с движком, методы у карт.
+- Опыт `experiments/cusum/03_kh_design.py` — таблицы дизайнов SN
+  (`n=10,15,20`), SR (`n=5,10`) для `ARL_IC ∈ {370,500}`, сверка с
+  рис. 4.5, минимакс-дизайн, график `ARL_OOC(k)`
+  (`results/experiments/cusum_kh_design.png`).
+- Проверка: `pytest -q` → **208 passed** (было 194; +14); `npc examples` →
+  **10/10 OK**; минимакс SN `n=10, ARL_IC=500` → `k=6, h=4` (совпадает с
+  рис. 4.5). Открыто: рис. 4.6 (`k=41, h=24`) не воспроизводится —
+  подбор под 500 даёт `k=39, h=16`.
+- Далее: 3b.8 — API/интеграция; 3b.9 — тесты/производительность;
+  3b.10 — кросс-валидация Python↔R.
+
+### 2026-10-19 — этап 3b.8: API и визуализация RL
+
+- `utils/plotting.py`: библиотечный `plot_run_length` — PMF (`ACCENT`,
+  столбики + точки) и CDF (`INK`, ступень) на двойной оси, `max_t`,
+  `show_cdf`, `show_stats`, `usetex`, `save_path`, возврат `(fig, ax)`.
+- Методы `plot_run_length()` у `CusumSignChart` (с `p`) и
+  `CusumSignedRankChart`; экспорт из `nonparametric_charts.utils`.
+- `examples/_common.py::plot_run_length` — тонкая обёртка над библиотечной
+  функцией (прежняя подпись сохранена), дублирование кода убрано.
+- Тесты: `tests/test_plotting.py` (+9).
+- Проверка: `pytest -q` → **217 passed** (было 208); `npc examples` →
+  **10/10 OK**.
+- Далее: 3b.9 — тесты/производительность; 3b.10 — кросс-валидация
+  Python↔R.
+
+### 2026-10-19 — процессное правило: помощники графиков — в `utils/plotting.py`
+
+- Принято пользователем: общие помощники визуализации добавляются сразу в
+  `src/nonparametric_charts/utils/plotting.py`; `examples/`, `experiments/`,
+  `notebooks/` — только тонкие обёртки, без дублирования кода графиков.
+- Зафиксировано в `.opencode/rules/reference.md` (раздел «Организация
+  репозитория»).
+
+### 2026-10-20 — CUSUM RL: тесты и производительность (этап 3b.9)
+
+- **Что сделано:**
+  - `tests/test_run_length_invariants.py` (70 тестов) — инварианты движка RL:
+    моменты/чётность/симметрия распределений `SN`/`SR`, согласованность
+    PMF/CDF с `ARL`/`SDRL`/`MRL`, `upper = lower` в IC, отражение нижней
+    ветви, двусторонняя не медленнее односторонней, монотонность `ARL` по
+    `h` и `k`, падение `ARL` при сдвиге, renewal ↔ Марков, симуляция `SR`
+    в пределах 3 SE, «золотые» значения (7 конфигураций), валидация
+    аргументов.
+  - `tests/test_run_length_performance.py` — guard-бюджеты: фиксированные
+    размеры `Q` для `n = 10, 20`, щедрый бюджет времени, дробное `k` не
+    размножает состояния, большой `ARL` рис. 4.6 не зацикливает PMF.
+  - `experiments/cusum/04_performance.py` — разбивка времени по фазам
+    (состояния / `Q` / solve+PMF), реперные дизайны `n = 10, 20` и рост
+    стоимости по `n`; график `results/experiments/cusum_performance.png`.
+  - профиль запуска: guard-тесты помечены `@pytest.mark.slow`; `npc test
+    --fast` пропускает их, `npc test --slow` — только они (перевод флагов в
+    `cli.py::_translate_test_args`, маркер в `pyproject.toml`, тесты в
+    `tests/test_cli.py`).
+- **Вывод:** основное время — развёртка PMF (пропорциональна `ARL`), а не
+  решение системы; `Q` мала (SN 2–3 состояния, SR до 47 при `n = 20`); для
+  `SR` число состояний растёт линейно по `n`.
+- **Затронуто:** `tests/test_run_length_invariants.py`,
+  `tests/test_run_length_performance.py`, `tests/test_cli.py`,
+  `src/nonparametric_charts/cli.py`, `pyproject.toml`,
+  `experiments/cusum/04_performance.py`, `docs/reports/cusum_plan.md`,
+  `AGENTS.md`, `.opencode/rules/reference.md`.
+- **Проверка:** `poetry run pytest -q` → **291 passed** (было 217; +74);
+  `npc test --fast` → 272 passed, 19 deselected; `npc test --slow` →
+  19 passed; `npc examples` → **10/10 OK**; `npc experiment cusum` —
+  4 опыта без ошибок.
+- **Далее:** 3b.10 — кросс-валидация Python↔R; 3b.11 — документирование.
+
+### 2026-10-20 — CUSUM RL: кросс-валидация Python↔R (этап 3b.10)
+
+- **Что сделано:**
+  - Найдены реализации CUSUM: R — `npSPC` (CER-UFBA/npSPC, `cusum_sn`/`cusum_sr`,
+    данные книги `data1`/`data2`); параметрические `qcr`, `qcc`, `spc`, `pyspc`,
+    `shewhart`, `spcchart`, `cusum` — для непараметрической сверки не годятся.
+    Готовой непараметрической CUSUM на Python нет.
+  - `experiments/cusum/05_cross_validation.R` — общие наборы данных (данные книги,
+    нормальные IC/OOC, связки, нули), статистики `Sn`/`Sr`, кумулятивные суммы
+    (перехват `plot_chart`), сигналы по сетке `(k,h)`, имитационный ARL по общим
+    данным; `05_cross_validation.py` — сверка со своей библиотекой и отчёт.
+  - **Найден и исправлен баг:** в двусторонней марковской цепи стартовое
+    состояние `(0,0)` не стояло первым после сортировки, а код брал `start[0]`;
+    `ARL` занижалась (`SN n=10,k=1,h=4`: `3.18` вместо `4.57`). Исправлено
+    порядком состояний (ADR-025), «золотые» значения и тесты дизайна обновлены
+    по независимой имитации.
+  - Зафиксированы дефекты `npSPC`: фиктивный нуль в позиции 1 (теряется первая
+    подгруппа; 18/918 конфигураций) и центрирование `SR` по полному `n` при
+    нулевых отклонениях (наборы с нулями).
+- **Результаты:** статистики — 0 расхождений (11 набор/статистика); сигналы —
+  918/918 против исправленной рекурсии (сырой `npSPC` — 900/918); ARL по общим
+  данным — все прогоны совпали (150/150, 100/100), средние `Δ=0.00`; точный
+  марковский ARL в пределах ошибки имитации. Рис. 4.6: точная двусторонняя
+  `ARL≈80 600` при `h=24` (было `≈79 500` из-за бага), книжное `500.30`
+  по-прежнему не воспроизводится — открытое расхождение.
+- **Затронуто:** `experiments/cusum/05_cross_validation.{py,R}`,
+  `src/nonparametric_charts/utils/run_length.py`,
+  `tests/test_run_length_invariants.py`, `tests/test_run_length_design.py`,
+  `tests/test_run_length_performance.py`, `experiments/cusum/04_performance.py`,
+  `.gitignore`, `docs/reports/cusum_plan.md`, `architecture-decisions.md` (ADR-025),
+  `book-map.md`, `branches.md`.
+- **Проверка:** `poetry run pytest -q` → **292 passed**; опыт 05 целиком
+  (R + Python) без ошибок; R 4.5.3 + `npSPC` 1.0.0 в `/tmp/opencode/renv`
+  (micromamba).
+- **Далее:** 3b.11 — документирование и материалы отчёта.
+
+### 2026-10-20 — процесс: восстановление R-окружения для сверок
+
+- **Что сделано:** `experiments/cusum/setup_renv.sh` — идемпотентный скрипт
+  (micromamba → R → dplyr/purrr → `npSPC` из GitHub) с проверкой версий и
+  готовыми `RENV`/`R_LIBS`/`RSCRIPT`; в `experiments/00_ENVIRONMENT.txt` —
+  запуск скрипта и проверка «одной строкой» (`Rscript -e 'library(npSPC)'`),
+  различающая «нет R» и «нет пакета». В `rules/reference.md` зафиксировано
+  правило сверок: хранить «сырой» и «исправленный» эталоны, чтобы отделять
+  баги своей библиотеки от дефектов чужого кода.
+- **Зачем:** `/tmp` очищается между сессиями; ручная установка стоила
+  ~10 минут и токенов на диагностику.
+- **Проверка:** скрипт с нуля — R 4.5.3, `npSPC` 1.0.0, `data1` 4×20,
+  `data2` 15×10; повторный запуск — без переустановки; опыт 3b.10 после
+  пересоздания окружения даёт те же результаты.
+- **Затронуто:** `experiments/cusum/setup_renv.sh`,
+  `experiments/00_ENVIRONMENT.txt`, `.opencode/rules/reference.md`,
+  `docs/reports/cusum_plan.md`, `experiments/cusum/05_cross_validation.{py,R}`.
+
+
+### 2026-10-20 — CUSUM: документирование и отчёт (этап 3b.11)
+
+- **Что сделано:**
+  - Новый отчёт `docs/reports/cusum_verification.tex/.pdf` (13 стр.):
+    математические основы §4.2.2 (ур. 4.7–4.12, опечатка 4.11), марковская
+    цепь и уравнение восстановления, приближения Сигмунда/Вальда, реализация
+    (`Cusum*Chart`, `utils/run_length*`, дизайн, производительность),
+    R-реализация `npSPC` с дефектами, сопоставление, примеры 4.6–4.10,
+    согласованность методов `ARL`, точная квадратура `SR`, OC-кривые,
+    таблицы дизайнов `(k,h)`, открытое расхождение рис. 4.6, кросс-валидация
+    Python↔R, выводы и рекомендации.
+  - `experiments/cusum/06_gen_figdata.py` — генератор `docs/reports/cusum_macros.tex`
+    (OC-кривые SN/SR по распределениям, `ARL_IC(h)` для SN/SR); координаты
+    в отчёте не редактируются вручную.
+  - `docs/reports/Makefile`: цель `make cusum`, отчёт добавлен в `TARGETS`.
+- **Результаты/акценты отчёта:** рис. 4.5 — `h=4`, `ARL=464.98` (книга
+  `454.24`, ошибка 2.4%); рис. 4.6 — подбор даёт `h=14`, `ARL=486.87`, а при
+  книжном `h=24` точная двусторонняя `ARL≈80 600` (односторонняя `≈161 200`),
+  а не `500.30`; статистики с `npSPC` — 0 расхождений, сигналы 918/918 против
+  исправленной рекурсии; производительность: SN `(10,6,4)` ≈2 мс,
+  SR `(10,41,24)` ≈227 мс (из них ≈219 мс — развёртка PMF).
+- **Затронуто:** `docs/reports/cusum_verification.tex/.pdf`,
+  `docs/reports/cusum_macros.tex`, `docs/reports/Makefile`,
+  `experiments/cusum/06_gen_figdata.py`, `docs/reports/cusum_plan.md`,
+  `.opencode/rules/reference.md`, `.opencode/memory/{book-map,tasks-completed,branches}.md`.
+- **Проверка:** `make cusum` — без ошибок, 13 стр.; `docs/reports/cusum_macros.tex`
+  пересобирается скриптом; `poetry run pytest -q` — зелёный (см. ниже).
+- **Далее:** ноутбук `notebooks/cusum_analysis.ipynb` (единственный
+  невыполненный пункт DoD), затем слияние ветки `feat/cusum-run-length`.
+
+### 2026-10-20 — процесс: шаблон отчёта, сохранение таблиц, точные страницы, make check
+
+- **Что сделано:**
+  - `.opencode/templates/report-structure.md` — каркас отчёта о верификации
+    карты: преамбула, обязательные разделы, правила графиков/макросов,
+    воспроизводимость чисел, чек-лист сдачи; добавлен в навигацию `AGENTS.md`.
+  - `experiments/cusum/03_kh_design.py` и `04_performance.py` теперь дублируют
+    вывод в `results/experiments/cusum_kh_design.txt` и
+    `cusum_performance.txt` (класс `Tee` + `redirect_stdout`), консольный
+    вывод не изменился.
+  - `book-map.md` и `cusum_plan.md`: точные печатные страницы рис. 4.5
+    (стр. 204) и 4.6 (стр. 207), с уточнением, что это SAS-выводы
+    распределения RL, а не OC-кривые; та же правка — в докстринге
+    `01_oc_curves.py` и в отчёте.
+  - `docs/reports/Makefile`: цель `make check` — по всем логам печатает
+    overfull/underfull и число ошибок/undefined, при ошибках возвращает
+    ненулевой код; описана в `rules/reference.md` и шаблоне отчёта.
+- **Проверка:** `make cusum` без ошибок; `make check` →
+  `cusum overfull=5 errors=0`, `sn 0/0`, `sr 4/0`; скрипты 03/04
+  компилируются и пишут txt того же объёма, что и консольный вывод.
+- **Затронуто:** `.opencode/templates/report-structure.md`, `AGENTS.md`,
+  `.opencode/rules/reference.md`, `.opencode/memory/book-map.md`,
+  `docs/reports/Makefile`, `docs/reports/cusum_verification.{tex,pdf}`,
+  `docs/reports/cusum_plan.md`, `experiments/cusum/{01_oc_curves,03_kh_design,
+  04_performance}.py`.
+
+### 2026-10-20 — CUSUM: ноутбук анализа (этап 5)
+
+- **Что сделано:** `notebooks/cusum_analysis.ipynb` по каркасу проекта:
+  источник (§4.2.2, стр. 202–208; примеры §4.3.2), теория CUSUM-SN/SR,
+  формулы LaTeX + код (`sign_statistic`, `signed_rank_statistic`), карта на
+  `data/data.csv` (n=14, `h=31` под ARL 500), разбор логики, графики карты,
+  PMF/CDF длины серии, OC-кривая и ступенчатая `ARL_IC(h)`.
+- **Проверки по книге:** 4.7 — сигнала нет; 4.9 — `t=10` (низ, `SR=−10`,
+  `N=2`) и `t=12` (верх, `SR=+10`, `N=2`); 4.8/4.10 — `ARL=16.615`/`6.809`
+  (книга `16.62`/`6.81`); рис. 4.5 — `h=4`, `ARL=464.98`; рис. 4.6 —
+  `h=14`, `ARL=486.87`, при `h=24` точная `ARL=80 613` (книга `500.30`).
+- **Проверка:** `jupyter nbconvert --to notebook --execute --inplace` из
+  `notebooks/` — без ошибок; `style-check` пройден (LaTeX-стиль, `despine`,
+  русские подписи, формулы mathtext).
+- **Затронуто:** `notebooks/cusum_analysis.ipynb`,
+  `docs/reports/cusum_plan.md` (DoD, журнал), `branches.md`.
+- **Далее:** ветка `feat/cusum-run-length` готова к слиянию в `master`.

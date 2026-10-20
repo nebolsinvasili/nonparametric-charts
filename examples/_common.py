@@ -99,3 +99,18 @@ class ExampleReport:
             return 1
         print("ИТОГ: все значения совпали с книгой")
         return 0
+
+
+def plot_run_length(result, path: Path, title: str) -> None:
+    """График распределения длины серии: PMF (столбики) и CDF (ступень).
+
+    Тонкая обёртка над :func:`nonparametric_charts.utils.plot_run_length`:
+    сохраняет прежнюю подпись ``(result, path, title)``, которой пользуются
+    примеры книги. ``path`` — путь сохранения графика.
+    """
+    from nonparametric_charts.utils.plotting import plot_run_length as _plot
+
+    fig, _ = _plot(result, title=title, save_path=str(path))
+
+    import matplotlib.pyplot as plt
+    plt.close(fig)

@@ -22,7 +22,9 @@
 | `example_4_5_shewhart_sr_runs_2of2.py` | 4.5 | знако-ранговая карта (Shewhart-SR) + правило «2 из 2» (стр. 228–229) |
 | `example_4_6_cusum_sn_individual.py` | 4.6 | CUSUM-SN, индивидуальные измерения, k = 0.5, h = 3, сигнал t = 28 (стр. 229–231) |
 | `example_4_7_cusum_sn_subgrouped.py` | 4.7 | CUSUM-SN по подгруппам, n = 10, k = 2, h = 8, сигнала нет (стр. 232–233) |
+| `example_4_8_cusum_sn_markov.py` | 4.8 | CUSUM-SN, марковская цепь: Ω⁺, Q, ARL = 16.62 (стр. 233–236) |
 | `example_4_9_cusum_sr.py` | 4.9 | CUSUM-SR по подгруппам, n = 4, k = 3, h = 8, сигналы t = 10 и t = 12 (стр. 236–238) |
+| `example_4_10_cusum_sr_markov.py` | 4.10 | CUSUM-SR, марковская цепь: Ω⁺, Q, ARL = 6.81 (стр. 238–240) |
 
 ## Запуск
 

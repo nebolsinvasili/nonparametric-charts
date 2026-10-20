@@ -55,13 +55,17 @@ docs/
   reports/                    # отчёты и всё, что их собирает
     sn_verification.tex/.pdf  # отчёт о верификации знаковой карты
     sr_verification.tex/.pdf  # отчёт о верификации знаково-ранговой карты
+    cusum_verification.tex/.pdf # отчёт о верификации CUSUM (SN/SR)
     sr_macros.tex             # генерируемые макросы графиков SR
+    cusum_macros.tex          # генерируемые макросы графиков CUSUM
     Makefile                  # сборка pdflatex (cd docs/reports && make)
     build/                    # вспомогательные файлы сборки (.gitignore)
     scripts/                  # генераторы координат/таблиц
 ```
 
 - Сборка отчётов: `cd docs/reports && make` (движок `pdflatex`, T2A + babel).
+- Проверка логов сборки: `make check` (ошибки/undefined — код возврата,
+  overfull/underfull — информационно; норма проекта — overfull < 8 pt).
 - Пути внутри отчётов и опытов задаются **от корня репозитория**.
 
 ## Организация репозитория (разделение ответственности)
@@ -78,10 +82,22 @@ results/        # сгенерированные артефакты (tests/, exa
 ```
 
 - Проверка примеров: `poetry run python examples/run_all.py` (или по одному).
-- Тесты кода: `pytest` (каталог `tests/`).
-- Опыты: `experiments/{sn,sr}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
-- Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`,
-  `npc examples`, `npc experiment {sn|sr|all}`; реализация — `src/nonparametric_charts/cli.py`.
+- Общие помощники визуализации добавляются **сразу** в
+  `src/nonparametric_charts/utils/plotting.py`; `examples/`, `experiments/`,
+  `notebooks/` используют их как тонкие обёртки и не дублируют код графиков.
+- Тесты кода: `pytest` (каталог `tests/`); долгие проверки помечены
+  `@pytest.mark.slow` и пропускаются командой `npc test --fast`
+  (`npc test --slow` — наоборот, только они).
+- Опыты: `experiments/{sn,sr,cusum}/`, инструкции — `experiments/00_ENVIRONMENT.txt`.
+  R-окружение для сверок CUSUM — `bash experiments/cusum/setup_renv.sh`
+  (идемпотентно; `/tmp` очищается, скрипт восстанавливает всё с нуля).
+- Сверки с внешними пакетами хранят **два эталона**: «сырой» вызов чужой
+  функции и «исправленный» (по документированным дефектам чужого кода).
+  Расхождение с сырым эталоном не считается багом своей библиотеки, пока не
+  проверено против исправленного и независимой имитации.
+- Алиасы запуска (entry point `npc`, `[project.scripts]`): `npc test`
+  (`--fast`/`--slow`), `npc examples`, `npc experiment {sn|sr|cusum|all}`;
+  реализация — `src/nonparametric_charts/cli.py`.
 
 ## `BaseControlChart`
 

@@ -58,3 +58,5 @@ experiments/sn/modes_npspc_limits.csv
 experiments/sn/modes_summary.csv
 experiments/sr/data_sr_*.csv
 experiments/sr/sr_*.csv
+# Кросс-валидация CUSUM (этап 3b.10)
+experiments/cusum/xval/
