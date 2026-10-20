@@ -15,14 +15,14 @@
 - **Статус:** ядро обеих карт (SN — фаза 3a, SR — ADR-022) завершено;
   3b.0–3b.11 (RL, симуляция, renewal, приближения, OC-кривые, подбор `h`,
   совместный дизайн `(k, h)`, API/визуализация, тесты/производительность,
-  кросс-валидация Python↔R, документирование) — готово. Остаётся ноутбук.
+  кросс-валидация Python↔R, документирование, ноутбук) — готово; 3b закрыт.
 - **Дата начала:** 2026-10-19.
 
 ## Definition of Done
 
 - [x] Код + тесты (`pytest`) зелёные (ядро 3a для SN, ADR-022 для SR).
 - [x] Примеры книги (`examples/`, `npc examples`) — `OK` (4.6, 4.7, 4.8, 4.9, 4.10).
-- [ ] Ноутбук исполняется, `style-check` пройден.
+- [x] Ноутбук исполняется, `style-check` пройден.
 - [x] Опыты + кросс-валидация (Python↔R) + инструкции воспроизведения.
 - [x] Отчёт `docs/reports/cusum_verification.tex/.pdf`, `make` чисто.
 - [x] Память обновлена (`tasks-completed`, ADR, `book-map`).
@@ -252,7 +252,7 @@ R-сверкой; в отчёт — как расхождение с перво�
   `examples/example_4_9_cusum_sr.py`,
   `examples/example_4_8_cusum_sn_markov.py`,
   `examples/example_4_10_cusum_sr_markov.py`
-- Ноутбук: `notebooks/cusum_analysis.ipynb` (планируется)
+- Ноутбук: `notebooks/cusum_analysis.ipynb` (готов; запуск из `notebooks/`)
 - Опыты: `experiments/cusum/01_oc_curves.py` — OC-кривые SN/SR по
   распределениям (график `results/experiments/cusum_oc_curves.png`);
   `experiments/cusum/02_sr_exact_vs_mc.py` — точная квадратура SR против
@@ -271,6 +271,20 @@ R-сверкой; в отчёт — как расхождение с перво�
 - Отчёт: `docs/reports/cusum_verification.tex/.pdf` (готов, `make cusum`)
 
 ## Журнал прогресса
+
+### 2026-10-20 — этап 5 (ноутбук `cusum_analysis.ipynb`)
+
+- Собран `notebooks/cusum_analysis.ipynb` по каркасу (источник → теория →
+  формулы LaTeX+код → реализация → разбор → графики → проверка по книге →
+  итог): CUSUM-SN/SR на `data/data.csv` (n=14, подбор `h=31` под ARL 500),
+  PMF/CDF длины серии, OC-кривая и ступенчатая `ARL_IC(h)`.
+- Проверки по книге: пример 4.7 — сигнала нет; пример 4.9 — сигналы
+  `t=10` (низ, `SR=−10`) и `t=12` (верх, `SR=+10`); примеры 4.8/4.10 —
+  `ARL=16.615`/`6.809`; рис. 4.5 — `h=4`, `ARL=464.98`; рис. 4.6 —
+  подбор `h=14`, `ARL=486.87`, при `h=24` точная `ARL=80 613` (книга
+  `500.30`, расхождение открыто).
+- Прогон: `jupyter nbconvert --execute --inplace` из `notebooks/` — без
+  ошибок; `style-check` (LaTeX-стиль, `despine`, русские подписи) пройден.
 
 ### 2026-10-20 — этап 3b.11 (документирование, отчёт)
 

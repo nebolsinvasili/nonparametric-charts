@@ -961,3 +961,21 @@
   `docs/reports/Makefile`, `docs/reports/cusum_verification.{tex,pdf}`,
   `docs/reports/cusum_plan.md`, `experiments/cusum/{01_oc_curves,03_kh_design,
   04_performance}.py`.
+
+### 2026-10-20 — CUSUM: ноутбук анализа (этап 5)
+
+- **Что сделано:** `notebooks/cusum_analysis.ipynb` по каркасу проекта:
+  источник (§4.2.2, стр. 202–208; примеры §4.3.2), теория CUSUM-SN/SR,
+  формулы LaTeX + код (`sign_statistic`, `signed_rank_statistic`), карта на
+  `data/data.csv` (n=14, `h=31` под ARL 500), разбор логики, графики карты,
+  PMF/CDF длины серии, OC-кривая и ступенчатая `ARL_IC(h)`.
+- **Проверки по книге:** 4.7 — сигнала нет; 4.9 — `t=10` (низ, `SR=−10`,
+  `N=2`) и `t=12` (верх, `SR=+10`, `N=2`); 4.8/4.10 — `ARL=16.615`/`6.809`
+  (книга `16.62`/`6.81`); рис. 4.5 — `h=4`, `ARL=464.98`; рис. 4.6 —
+  `h=14`, `ARL=486.87`, при `h=24` точная `ARL=80 613` (книга `500.30`).
+- **Проверка:** `jupyter nbconvert --to notebook --execute --inplace` из
+  `notebooks/` — без ошибок; `style-check` пройден (LaTeX-стиль, `despine`,
+  русские подписи, формулы mathtext).
+- **Затронуто:** `notebooks/cusum_analysis.ipynb`,
+  `docs/reports/cusum_plan.md` (DoD, журнал), `branches.md`.
+- **Далее:** ветка `feat/cusum-run-length` готова к слиянию в `master`.

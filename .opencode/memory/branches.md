@@ -19,8 +19,9 @@
 плюс процессные улучшения (алиас `npc experiment cusum`, кэш ARL, точная
 квадратура SR для `n ≤ 20`); 3b.10 (кросс-валидация Python↔R, `npSPC`) готова,
 при ней исправлен баг двусторонней цепи (ADR-025); 3b.11 (документирование,
-отчёт `docs/reports/cusum_verification.tex/.pdf`) готово. Остаётся ноутбук
-`notebooks/cusum_analysis.ipynb`. Ветка не слита.
+отчёт `docs/reports/cusum_verification.tex/.pdf`) и ноутбук
+`notebooks/cusum_analysis.ipynb` готовы. Все пункты DoD закрыты; ветка
+готова к слиянию.
 
 Статусы: `planned` → `open` → `closed`. Ветки после слияния удалены.
 
