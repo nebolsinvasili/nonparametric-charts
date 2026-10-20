@@ -57,7 +57,7 @@
 | Карта книги Чакраборти | `.opencode/memory/book-map.md` |
 | Журнал задач | `.opencode/memory/tasks-completed.md` |
 | Навыки | `.opencode/skills/` (`book-lookup`, `notebook-build`, `style-check`) |
-| Шаблоны | `.opencode/templates/` (`new-chart`, `chart-plan`, `notebook-structure`) |
+| Шаблоны | `.opencode/templates/` (`new-chart`, `chart-plan`, `notebook-structure`, `report-structure`) |
 | Порядок построения новой карты | `.opencode/commands/new-chart.md` |
 | Рабочие документы карт (план/досье) | `docs/reports/<chart>_plan.md` |
 | Сабагенты | `.opencode/agents/` (`book-checker`, `notebook-writer`) |

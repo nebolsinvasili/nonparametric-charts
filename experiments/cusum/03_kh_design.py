@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
@@ -138,6 +139,33 @@ def plot_panels(panels: list[tuple[str, float, np.ndarray, dict]]) -> Path:
 
 
 def main() -> int:
+    """Печать таблиц дизайна с одновременной записью в файл."""
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    path = RESULTS / 'cusum_kh_design.txt'
+    with path.open('w', encoding='utf-8') as log, \
+            redirect_stdout(Tee(sys.stdout, log)):
+        code = _run()
+    print(f'\nТаблицы сохранены: {path.relative_to(ROOT)}')
+    return code
+
+
+class Tee:
+    """Дублировать вывод в консоль и в файл."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data: str) -> int:
+        for stream in self.streams:
+            stream.write(data)
+        return len(data)
+
+    def flush(self) -> None:
+        for stream in self.streams:
+            stream.flush()
+
+
+def _run() -> int:
     print('Совместный дизайн (k, h) CUSUM: ARL_OOC при номинальном ARL_IC')
     print('Источник: Chakraborti & Graham (2019), §3.2.2, стр. 67–72; '
           '§4.3.2, стр. 232–238')

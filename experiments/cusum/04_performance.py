@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import sys
 import time
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
@@ -207,6 +208,33 @@ def plot_costs(costs: dict[str, dict[str, np.ndarray]]) -> Path:
 
 
 def main() -> int:
+    """Печать таблиц производительности с записью в файл."""
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    path = RESULTS / 'cusum_performance.txt'
+    with path.open('w', encoding='utf-8') as log, \
+            redirect_stdout(Tee(sys.stdout, log)):
+        code = _run()
+    print(f'\nТаблицы сохранены: {path.relative_to(ROOT)}')
+    return code
+
+
+class Tee:
+    """Дублировать вывод в консоль и в файл."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data: str) -> int:
+        for stream in self.streams:
+            stream.write(data)
+        return len(data)
+
+    def flush(self) -> None:
+        for stream in self.streams:
+            stream.flush()
+
+
+def _run() -> int:
     print('Производительность марковского расчёта RL CUSUM')
     print('Источник: Chakraborti & Graham (2019), §4.2.2, стр. 202–208; '
           'ур. 3.22–3.24, стр. 112')

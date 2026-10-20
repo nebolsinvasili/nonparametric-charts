@@ -935,3 +935,29 @@
   пересобирается скриптом; `poetry run pytest -q` — зелёный (см. ниже).
 - **Далее:** ноутбук `notebooks/cusum_analysis.ipynb` (единственный
   невыполненный пункт DoD), затем слияние ветки `feat/cusum-run-length`.
+
+### 2026-10-20 — процесс: шаблон отчёта, сохранение таблиц, точные страницы, make check
+
+- **Что сделано:**
+  - `.opencode/templates/report-structure.md` — каркас отчёта о верификации
+    карты: преамбула, обязательные разделы, правила графиков/макросов,
+    воспроизводимость чисел, чек-лист сдачи; добавлен в навигацию `AGENTS.md`.
+  - `experiments/cusum/03_kh_design.py` и `04_performance.py` теперь дублируют
+    вывод в `results/experiments/cusum_kh_design.txt` и
+    `cusum_performance.txt` (класс `Tee` + `redirect_stdout`), консольный
+    вывод не изменился.
+  - `book-map.md` и `cusum_plan.md`: точные печатные страницы рис. 4.5
+    (стр. 204) и 4.6 (стр. 207), с уточнением, что это SAS-выводы
+    распределения RL, а не OC-кривые; та же правка — в докстринге
+    `01_oc_curves.py` и в отчёте.
+  - `docs/reports/Makefile`: цель `make check` — по всем логам печатает
+    overfull/underfull и число ошибок/undefined, при ошибках возвращает
+    ненулевой код; описана в `rules/reference.md` и шаблоне отчёта.
+- **Проверка:** `make cusum` без ошибок; `make check` →
+  `cusum overfull=5 errors=0`, `sn 0/0`, `sr 4/0`; скрипты 03/04
+  компилируются и пишут txt того же объёма, что и консольный вывод.
+- **Затронуто:** `.opencode/templates/report-structure.md`, `AGENTS.md`,
+  `.opencode/rules/reference.md`, `.opencode/memory/book-map.md`,
+  `docs/reports/Makefile`, `docs/reports/cusum_verification.{tex,pdf}`,
+  `docs/reports/cusum_plan.md`, `experiments/cusum/{01_oc_curves,03_kh_design,
+  04_performance}.py`.

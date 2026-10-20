@@ -5,6 +5,7 @@
 #   make snver  — только верификацию SN
 #   make srver  — только верификацию SR
 #   make cusum  — только верификацию CUSUM
+#   make check  — проверить логи (ошибки, undefined, overfull/underfull)
 #   make clean  — удалить build/ и собранные PDF (НЕ трогает PDF-первоисточники в docs/ref/)
 #
 # Запуск из этого каталога: cd docs/reports && make
@@ -17,7 +18,7 @@ BUILDDIR   := build
 LATEXFLAGS := -interaction=nonstopmode -halt-on-error -file-line-error -output-directory=$(BUILDDIR)
 TARGETS    := sn_verification.pdf sr_verification.pdf cusum_verification.pdf
 
-.PHONY: all snver srver cusum clean
+.PHONY: all snver srver cusum check clean
 
 all: $(TARGETS)
 
@@ -45,6 +46,21 @@ $(BUILDDIR):
 	$(LATEX) $(LATEXFLAGS) $< >/dev/null
 	$(LATEX) $(LATEXFLAGS) $< >/dev/null
 	cp $(BUILDDIR)/$@ $@
+
+# Проверка логов: ошибки/undefined — ненулевой код возврата,
+# overfull/underfull — только информационно (норма проекта: < 8 pt).
+check: $(TARGETS)
+	@status=0; \
+	for log in $(BUILDDIR)/*.log; do \
+	  name=$$(basename $$log .log); \
+	  over=$$(grep -c "Overfull \\\\hbox" $$log || true); \
+	  under=$$(grep -c "Underfull \\\\hbox" $$log || true); \
+	  bad=$$(grep -cE "Undefined control sequence|LaTeX Error|undefined references|Citation .* undefined" $$log || true); \
+	  printf "%-26s overfull=%-3s underfull=%-3s errors=%s\n" \
+	    "$$name" "$$over" "$$under" "$$bad"; \
+	  if [ "$$bad" -ne 0 ]; then status=1; fi; \
+	done; \
+	exit $$status
 
 # Удаляются только артефакты сборки и собственные PDF;
 # PDF-первоисточники в docs/ref/ (книга Чакраборти, Клячкин) не затрагиваются.
