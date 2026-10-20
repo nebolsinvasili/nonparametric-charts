@@ -11,7 +11,7 @@
 | `feat/cusum-charts` | closed | `master` | CUSUM-SN/SR, утилита статистик (ADR-020/022) | 2026-10-19 | 2026-10-19 | `1c192d5` |
 | `chore/plot-style` | closed | `master` | Единый стиль графиков (ADR-021) | 2026-10-19 | 2026-10-19 | `ade862b` |
 | `chore/experiments-style` | closed | `master` | Строгий вывод экспериментов | 2026-10-19 | 2026-10-19 | `391cb16` |
-| `feat/cusum-run-length` | open | `master` | RL CUSUM: марковский движок, дизайн `(k,h)` (ADR-023) | 2026-10-19 | — | — |
+| `feat/cusum-run-length` | closed | `master` | CUSUM: RL-движок, дизайн `(k,h)`, отчёт, ноутбук (ADR-023/025) | 2026-10-19 | 2026-10-20 | `d9dbd19` |
 
 Текущее состояние `feat/cusum-run-length`: 3b.0–3b.9 готовы (марковский RL,
 симуляция, renewal, приближения, OC-кривые, подбор `h`, совместный дизайн
@@ -21,7 +21,7 @@
 при ней исправлен баг двусторонней цепи (ADR-025); 3b.11 (документирование,
 отчёт `docs/reports/cusum_verification.tex/.pdf`) и ноутбук
 `notebooks/cusum_analysis.ipynb` готовы. Все пункты DoD закрыты; ветка
-готова к слиянию.
+слита в `master` 2026-10-20 (`d9dbd19`) и удалена.
 
 Статусы: `planned` → `open` → `closed`. Ветки после слияния удалены.
 
