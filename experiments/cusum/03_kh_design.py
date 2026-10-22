@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Совместный дизайн ``(k, h)`` CUSUM-SN и CUSUM-SR.
+"""Совместный подбор ``(k, h)`` CUSUM-SN и CUSUM-SR.
 
-Печатает таблицы дизайнов под номинальный ``ARL_IC`` (370 и 500) и целевой
+Печатает таблицы подбора под номинальный ``ARL_IC`` (370 и 500) и целевой
 сдвиг ``δ``: для каждого ``k`` из решётки статистики подбирается ``h`` так,
 чтобы достигался номинал, а оптимальной считается пара с минимальным
 ``ARL_OOC`` (при сетке ``δ`` — минимакс). Строит две панели ``ARL_OOC(k)``,
@@ -55,7 +55,7 @@ SN_K_FRACTIONS = (0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0)
 
 
 def print_design_table(statistic: str, n: int, target: float) -> None:
-    """Напечатать строку дизайна для каждого целевого сдвига ``δ``."""
+    """Напечатать строку таблицы для каждого целевого сдвига ``δ``."""
     deltas = SN_DELTAS if statistic == 'SN' else SR_DELTAS
     print(f'\n{statistic}: n={n}, ARL_IC={target:g}')
     header = (
@@ -139,7 +139,7 @@ def plot_panels(panels: list[tuple[str, float, np.ndarray, dict]]) -> Path:
 
 
 def main() -> int:
-    """Печать таблиц дизайна с одновременной записью в файл."""
+    """Печать таблиц подбора с одновременной записью в файл."""
     RESULTS.mkdir(parents=True, exist_ok=True)
     path = RESULTS / 'cusum_kh_design.txt'
     with path.open('w', encoding='utf-8') as log, \
@@ -166,7 +166,7 @@ class Tee:
 
 
 def _run() -> int:
-    print('Совместный дизайн (k, h) CUSUM: ARL_OOC при номинальном ARL_IC')
+    print('Совместный подбор (k, h) CUSUM: ARL_OOC при номинальном ARL_IC')
     print('Источник: Chakraborti & Graham (2019), §3.2.2, стр. 67–72; '
           '§4.3.2, стр. 232–238')
 
@@ -183,10 +183,10 @@ def _run() -> int:
     print(
         f'  h={figure_4_5.h:g}, ARL_IC={figure_4_5.arl:.2f} '
         f'(в книге 454.24) — используется при '
-        f'k=6; совместный дизайн для δ=1: см. таблицу выше'
+        f'k=6; совместный подбор для δ=1: см. таблицу выше'
     )
 
-    print('\nМинимакс-дизайн по сетке сдвигов (SN, n=10, ARL_IC=500):')
+    print('\nМинимаксный вариант по сетке сдвигов (SN, n=10, ARL_IC=500):')
     minimax = design_sign_kh(
         10, 500, SN_DELTAS, sided='two', k_fractions=SN_K_FRACTIONS,
     )
