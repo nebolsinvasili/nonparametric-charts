@@ -5,13 +5,16 @@
 
 1. **Есть ли выбросы?** — правило Тьюки: значение вне интервала
    ``[Q1 − 1.5·IQR; Q3 + 1.5·IQR]`` считается выбросом.
-2. **Чем заменить выброс?** — медианой своей подгруппы: размер подгруппы
-   ``n`` сохраняется, а уровень ряда не сдвигается к общему центру.
+2. **Чем заменить выброс?** — основной вариант — **винзоризация**: значение
+   «поджимается» к границе Тьюки. Альтернативы — медиана своей подгруппы
+   (строки) или медиана своего столбца. Во всех случаях размер подгруппы
+   ``n`` сохраняется. Винзоризация не берёт значение из чужой ячейки и не
+   меняет знак отклонения, если заборы не пересекают целевое значение.
 3. **Как описать набор?** — сводка (число подгрупп, пропуски, квантили,
    асимметрия), по которой видно, применима ли знаково-ранговая карта
    (нужна симметрия).
 
-Замечание о месте в расчёте: замена выбросов — это **предобработка**, а не
+Замечание о месте в расчёте: очистка выбросов — это **предобработка**, а не
 часть метода карты. Контрольные границы ``±a`` от данных не зависят
 (Chakraborti & Graham, 2019, § 4.2.1.1, стр. 190–191), поэтому очистка
 меняет только статистики подгрупп, но не саму карту.
@@ -30,6 +33,7 @@ import pandas as pd
 __all__ = [
     'iqr_fences',
     'find_iqr_outliers',
+    'winsorize_outliers',
     'replace_outliers_with_subgroup_median',
     'summarize_dataset',
 ]
@@ -109,6 +113,72 @@ def find_iqr_outliers(
         rows,
         columns=['subgroup', 'column', 'value', 'lower', 'upper'],
     )
+
+
+def winsorize_outliers(
+    data: pd.DataFrame,
+    k: float = 1.5,
+    outliers: Optional[pd.DataFrame] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Ограничить выбросы заборами Тьюки (винзоризация).
+
+    Значения ниже ``Q1 - k*IQR`` заменяются нижним забором, значения выше
+    ``Q3 + k*IQR`` — верхним. В отличие от замены медианой, винзоризация:
+
+    - не берёт значение из другой ячейки;
+    - сохраняет порядок «внутренних» наблюдений;
+    - не меняет знак отклонения, если заборы не пересекают целевое значение;
+    - создаёт совпадения на границах (tie), что важно для ранговых карт.
+
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        Строка = подгруппа, столбец = наблюдение. Исходная таблица не
+        изменяется.
+    k : float, default=1.5
+        Множитель межквартильного размаха.
+    outliers : pandas.DataFrame, optional
+        Готовая таблица из :func:`find_iqr_outliers`; если не задана,
+        выбросы ищутся заново.
+
+    Returns
+    -------
+    tuple[pandas.DataFrame, pandas.DataFrame]
+        Очищенная копия (той же формы, что и вход) и журнал изменений со
+        столбцами ``subgroup``, ``column``, ``old_value``, ``new_value``.
+    """
+    cleaned = data.copy()
+    lower, upper, _, _ = iqr_fences(data.to_numpy(dtype=float), k=k)
+    if outliers is None:
+        outliers = find_iqr_outliers(data, k=k)
+
+    log_columns = ['subgroup', 'column', 'old_value', 'new_value']
+    if outliers.empty:
+        return cleaned, pd.DataFrame(columns=log_columns)
+
+    columns = list(data.columns)
+    rows = []
+    for _, record in outliers.iterrows():
+        position = int(record['subgroup']) - 1
+        column = record['column']
+        column_position = columns.index(column)
+        old_value = float(data.iat[position, column_position])
+        new_value = lower if old_value < lower else upper
+        cleaned.iat[position, column_position] = new_value
+        rows.append({
+            'subgroup': position + 1,
+            'column': column,
+            'old_value': old_value,
+            'new_value': new_value,
+        })
+
+    journal = (
+        pd.DataFrame(rows, columns=log_columns)
+        .sort_values('subgroup')
+        .reset_index(drop=True)
+    )
+    return cleaned, journal
 
 
 def replace_outliers_with_subgroup_median(
