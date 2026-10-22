@@ -41,13 +41,28 @@
 8. **Ветки для крупных изменений.** Крупное изменение (новая карта, смена
    архитектуры/пакета, реструктуризация репозитория, новый отчёт, правка
    > ~5 файлов) — только в ветке `<type>/<topic>` от `master`; по завершении
-   правок — `merge --no-ff` и удаление ветки, при новых правках — заново.
-   Журнал веток — `.opencode/memory/branches.md`. → `rules/profile.md`.
+   правок — `merge --no-ff`. Ветку удалять только если она не фиксирует
+   старую версию и пользователь не просил её сохранить; иначе оставить.
+   При новых правках — новая ветка. Журнал веток —
+   `.opencode/memory/branches.md`. → `rules/profile.md`.
+9. **README и воспроизводимость.** Каждый новый модуль, опыт, отчёт и
+   ноутбук сопровождается README: назначение, алгоритм, команда запуска,
+   входы/выходы и ожидаемый результат. Старые версии кода, ветки, worktree
+   и артефакты не удаляются без явного разрешения. →
+   `README.md`, `experiments/README.md`, `experiments/cusum/README.md`,
+   `docs/reports/README.md`, `notebooks/README.md`,
+   `.opencode/memory/preferences.md`.
 
 ## Навигация
 
 | Что | Где |
 | --- | --- |
+| Общий обзор и быстрый старт | `README.md` |
+| Опыты и окружение | `experiments/README.md` |
+| Алгоритмы и запуск CUSUM | `experiments/cusum/README.md` |
+| Сборка отчётов | `docs/reports/README.md` |
+| Ноутбуки | `notebooks/README.md` |
+| Предпочтения пользователя | `.opencode/memory/preferences.md` |
 | Технический референс проекта | `.opencode/rules/reference.md` |
 | Стиль графиков | `.opencode/rules/plot-style.md` |
 | Структура ноутбука | `.opencode/rules/notebook-style.md` |
