@@ -1030,3 +1030,23 @@
   исторические записи `cusum_plan.md` помечены как исторические.
 - **Проверка:** `poetry run npc examples 4.1` — OK; пример `n=14`
   воспроизведён; быстрый старт из README выполнен.
+
+### 2026-10-23 — единый каркас ноутбуков и проверка данных
+
+- **Что сделано:** четыре ноутбука (`sign_chart_analysis`,
+  `signed_rank_chart_analysis`, `cusum_sign_analysis`,
+  `cusum_signed_rank_analysis`) приведены к одной структуре: теория (минимум)
+  → загрузка `data.csv` → проверка данных и графики → подбор параметров
+  разными методами → карта → повтор на очищенных данных → сравнение.
+- **CUSUM:** `cusum_analysis.ipynb` разделён на SN- и SR-ноутбуки; примеры
+  книги 4.7–4.10 убраны в `tests/`, в ноутбуках остались ссылки.
+- **Данные:** добавлен `src/nonparametric_charts/utils/data_quality.py`
+  (`iqr_fences`, `find_iqr_outliers`,
+  `replace_outliers_with_subgroup_median`, `summarize_dataset`); выбросы
+  ищутся по IQR 1.5 и заменяются медианой своей подгруппы, `n` сохраняется.
+- **Побочная правка:** подписи `FAR₀`/`α` в `plot_comparison` переведены на
+  mathtext — иначе `usetex=True` падал на Unicode-индексах.
+- **Проверка:** `pytest -q` — 306 passed; все четыре ноутбука выполнены
+  `nbconvert --execute`, ошибок нет; структура разделов совпадает
+  (15 заголовков в каждом).
+- **Ветка:** `docs/unified-notebooks`, merge `f722809`.
