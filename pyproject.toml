@@ -2,6 +2,7 @@
 name = "nonparametric-charts"
 version = "0.1.0"
 description = "Nonparametric (distribution-free) Shewhart control charts for univariate process monitoring"
+readme = "README.md"
 authors = [
     {name = "Nebolsin Vasili", email = "nebolsinvasili@gmail.com"}
 ]
