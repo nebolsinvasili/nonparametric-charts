@@ -13,6 +13,7 @@
 | `chore/experiments-style` | closed | `master` | Строгий вывод экспериментов | 2026-10-19 | 2026-10-19 | `391cb16` |
 | `feat/cusum-run-length` | closed | `master` | CUSUM: RL-движок, подбор `(k,h)`, отчёт, ноутбук (ADR-023/025) | 2026-10-19 | 2026-10-20 | `d9dbd19` |
 | `docs/rename-design` | closed | `master` | Замена англицизма «design» на «подбор/выбор», навык `humanizer-ru` | 2026-10-22 | 2026-10-22 | `f35e459` |
+| `perf/design-search` | closed | `master` | Ускорение подбора `(k,h)`: ARL без PMF, бисекция (ADR-026) | 2026-10-23 | 2026-10-23 | `8abc3b1` |
 
 Текущее состояние `feat/cusum-run-length`: 3b.0–3b.9 готовы (марковский RL,
 симуляция, renewal, приближения, OC-кривые, подбор `h`, совместный подбор
