@@ -16,6 +16,7 @@
 | `perf/design-search` | closed | `master` | Ускорение подбора `(k,h)`: ARL без PMF, бисекция (ADR-026) | 2026-10-23 | 2026-10-23 | `8abc3b1` |
 | `docs/reproducibility-readmes` | merged, kept | `master` | README, алгоритмы, запуск и воспроизводимость (ADR-027) | 2026-10-23 | 2026-10-23 | `694fbc6` |
 | `docs/unified-notebooks` | closed | `master` | Единый каркас четырёх ноутбуков, проверка данных (IQR) | 2026-10-23 | 2026-10-23 | `f722809` |
+| `docs/winsorize-outliers` | closed | `master` | Винзоризация выбросов вместо медианы | 2026-10-23 | 2026-10-23 | `94b17e7` |
 
 Текущее состояние `feat/cusum-run-length`: 3b.0–3b.9 готовы (марковский RL,
 симуляция, renewal, приближения, OC-кривые, подбор `h`, совместный подбор
