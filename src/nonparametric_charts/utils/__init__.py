@@ -7,6 +7,7 @@ from nonparametric_charts.utils.data_quality import (
     iqr_fences,
     replace_outliers_with_subgroup_median,
     summarize_dataset,
+    winsorize_outliers,
 )
 from nonparametric_charts.utils.statistics import (
     sign_counts,
@@ -75,6 +76,7 @@ __all__ = [
     'iqr_fences',
     'replace_outliers_with_subgroup_median',
     'summarize_dataset',
+    'winsorize_outliers',
     'sign_counts',
     'sign_statistic',
     'signed_rank_details',

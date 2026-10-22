@@ -11,6 +11,7 @@ from nonparametric_charts.utils.data_quality import (
     iqr_fences,
     replace_outliers_with_subgroup_median,
     summarize_dataset,
+    winsorize_outliers,
 )
 
 
@@ -111,3 +112,58 @@ def test_summarize_dataset_reports_outlier_fences() -> None:
     assert summary['наблюдений в подгруппе (n)'] == 2
     assert summary['пропусков'] == 1
     assert summary['нижний забор IQR'] < summary['верхний забор IQR']
+
+
+def test_winsorize_clamps_to_fences_and_keeps_shape() -> None:
+    """Винзоризация поджимает выбросы к заборам, форма сохраняется."""
+    data = _frame([
+        [-100.0, 2.0, 3.0],
+        [4.0, 5.0, 6.0],
+        [1.0, 5.0, 100.0],
+    ])
+    lower, upper, _, _ = iqr_fences(data.to_numpy(dtype=float))
+    cleaned, journal = winsorize_outliers(data)
+
+    assert cleaned.shape == data.shape
+    assert cleaned.iloc[0]['x1'] == pytest.approx(lower)
+    assert cleaned.iloc[2]['x3'] == pytest.approx(upper)
+    assert data.iloc[0]['x1'] == pytest.approx(-100.0)
+    assert cleaned.iloc[1]['x2'] == pytest.approx(5.0)
+    assert len(journal) == 2
+
+
+def test_winsorize_keeps_values_on_fence() -> None:
+    """Значения ровно на заборе не считаются выбросами."""
+    data = _frame([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0]])
+    lower, upper, _, _ = iqr_fences(data.to_numpy(dtype=float))
+    frame = _frame([[lower, 2.0], [2.0, 3.0], [3.0, upper]])
+    cleaned, journal = winsorize_outliers(frame)
+
+    pd.testing.assert_frame_equal(cleaned, frame)
+    assert journal.empty
+
+
+def test_winsorize_sorts_journal_by_subgroup() -> None:
+    """Журнал изменений упорядочен по номеру подгруппы."""
+    data = _frame([
+        [1.0, 100.0],
+        [2.0, 2.0],
+        [100.0, 3.0],
+        [3.0, 4.0],
+        [4.0, 5.0],
+        [5.0, 6.0],
+        [6.0, 7.0],
+    ])
+    _, journal = winsorize_outliers(data)
+
+    assert journal['subgroup'].tolist() == sorted(journal['subgroup'].tolist())
+    assert len(journal) == 2
+
+
+def test_winsorize_without_outliers_returns_copy() -> None:
+    """Без выбросов данные не меняются, журнал пуст."""
+    data = _frame([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0]])
+    cleaned, journal = winsorize_outliers(data)
+
+    pd.testing.assert_frame_equal(cleaned, data)
+    assert journal.empty
