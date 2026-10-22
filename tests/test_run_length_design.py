@@ -310,7 +310,7 @@ def test_design_h_validates_arguments() -> None:
 
 
 def test_arl_is_monotone_in_h() -> None:
-    """``ARL(h)`` не убывает по ``h`` (монотонность дизайна)."""
+    """``ARL(h)`` не убывает по ``h`` (монотонность подбора)."""
     sign_values, sign_probabilities = sign_step_distribution(10)
     sign_arls = [
         cusum_run_length(
@@ -389,7 +389,7 @@ def test_chart_design_h_uses_chart_parameters() -> None:
 
 
 def test_design_result_arl_matches_engine() -> None:
-    """Достигнутая в дизайне ARL совпадает с прямым расчётом."""
+    """Достигнутая в подборе ARL совпадает с прямым расчётом."""
     result = design_sign_h(10, 500, 6, sided='two')
     direct = cusum_run_length(
         *sign_step_distribution(10), 6, result.h, sided='two'
@@ -398,7 +398,7 @@ def test_design_result_arl_matches_engine() -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Кэш ARL для сеток дизайна
+#  Кэш ARL для сеток подбора
 # --------------------------------------------------------------------------- #
 
 def test_cached_arl_hits_on_repeated_call() -> None:
@@ -442,7 +442,7 @@ def test_clear_run_length_cache() -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Совместный дизайн (k, h)
+#  Совместный подбор (k, h)
 # --------------------------------------------------------------------------- #
 
 def test_reference_k_is_half_expected_step() -> None:
@@ -477,7 +477,7 @@ def test_design_sign_kh_returns_optimal_design() -> None:
 
 
 def test_design_signed_rank_kh_small_n() -> None:
-    """CUSUM-SR: ``n=4`` — конечный дизайн, ``ARL_OOC < ARL_IC``."""
+    """CUSUM-SR: ``n=4`` — конечный набор, ``ARL_OOC < ARL_IC``."""
     result = design_signed_rank_kh(4, 500, 1.0, sided='two')
     assert result.statistic == 'SR'
     assert result.k > 0 and result.h > 0

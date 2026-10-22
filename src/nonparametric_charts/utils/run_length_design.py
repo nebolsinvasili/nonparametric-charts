@@ -6,7 +6,7 @@
 - распределения статистики подгруппы при сдвиге процесса (OOC);
 - OC-кривые ``ARL(δ)`` для разных распределений;
 - подбор интервала решения ``h`` под номинальный ``ARL_IC``;
-- совместный дизайн ``(k, h)`` под целевой сдвиг ``δ`` и номинальный
+- совместный подбор ``(k, h)`` под целевой сдвиг ``δ`` и номинальный
   ``ARL_IC`` (минимум ``ARL_OOC``);
 - приближённые формулы (Сигмунд, Вальд/``1/FAR``) для быстрых оценок.
 
@@ -695,7 +695,7 @@ def compare_arl_methods(
 
 
 # --------------------------------------------------------------------------- #
-#  Кэш ARL для сеток дизайна
+#  Кэш ARL для сеток подбора
 # --------------------------------------------------------------------------- #
 
 @lru_cache(maxsize=4_096)
@@ -726,7 +726,7 @@ def cached_arl(
     """
     ``ARL`` с кэшированием по распределению шага и ``(k, h)``.
 
-    Нужен для сеток дизайна 3b.7: при переборе ``(n, k, h)`` одинаковые
+    Нужен для сеток подбора 3b.7: при переборе ``(n, k, h)`` одинаковые
     состояния не пересчитываются. Кэш хранит только ``ARL`` (не PMF),
     максимум 4096 записей; сброс — ``clear_run_length_cache()``.
 
@@ -822,7 +822,7 @@ class DesignResult:
         return abs(self.arl - self.target_arl) / self.target_arl
 
     def summary(self) -> Dict:
-        """Краткая сводка результата дизайна."""
+        """Краткая сводка результата подбора."""
         return {
             'statistic': self.statistic,
             'n': self.n,
@@ -1062,7 +1062,7 @@ def design_signed_rank_h(
 
 
 # --------------------------------------------------------------------------- #
-#  Совместный дизайн (k, h) под целевой сдвиг
+#  Совместный подбор (k, h) под целевой сдвиг
 # --------------------------------------------------------------------------- #
 
 def _shift_step_distribution(
@@ -1153,12 +1153,12 @@ def reference_k(
 @dataclass
 class DesignKHResult:
     """
-    Результат совместного дизайна ``(k, h)``.
+    Результат совместного подбора ``(k, h)``.
 
     Attributes
     ----------
     k, h : float
-        Найденный дизайн.
+        Найденные параметры.
     arl_ic : float
         Достигнутая ``ARL_IC`` (в IC, ``δ = 0``).
     arl_ooc : float
@@ -1174,7 +1174,7 @@ class DesignKHResult:
     n_k, n_evaluated : int
         Число проверенных ``k`` и суммарно просчитанных ``(k, h)``.
     ooc_by_delta : dict
-        ``ARL_OOC`` по каждому целевому сдвигу для выбранного дизайна.
+        ``ARL_OOC`` по каждому целевому сдвигу для выбранного варианта.
     table : pandas.DataFrame
         Полная сетка: ``k``, ``h``, ``arl_ic``, ``arl_ooc``,
         ``relative_error_ic``, ``feasible``.
@@ -1204,7 +1204,7 @@ class DesignKHResult:
         return abs(self.arl_ic - self.target_arl) / self.target_arl
 
     def summary(self) -> Dict:
-        """Краткая сводка дизайна."""
+        """Краткая сводка подбора."""
         return {
             'statistic': self.statistic,
             'n': self.n,
@@ -1262,7 +1262,7 @@ def design_kh(
     max_candidates: int = 5_000,
 ) -> DesignKHResult:
     """
-    Совместный дизайн ``(k, h)`` под номинальный ``ARL_IC`` и сдвиг ``δ``.
+    Совместный подбор ``(k, h)`` под номинальный ``ARL_IC`` и сдвиг ``δ``.
 
     Процедура книги (§ 3.2.2, стр. 71–72): ``k`` выбирается первым, затем
     ``h`` — так, чтобы достигался номинальный ``ARL_IC``; оптимальной
@@ -1332,7 +1332,7 @@ def design_kh(
 
     Ссылки: § 3.2.2, стр. 67–72 (``k``, минимум ``ARL_OOC``, консервативный
     ``h``); § 4.2.2, стр. 202–206 (определения ур. 4.7–4.12); § 4.3.2,
-    стр. 232–238 (порядок дизайна и примеры).
+    стр. 232–238 (порядок подбора и примеры).
     """
     statistic = statistic.upper()
     if statistic not in {'SN', 'SR'}:
@@ -1518,7 +1518,7 @@ def design_sign_kh(
     distribution: str = 'normal',
     **kwargs: Any,
 ) -> DesignKHResult:
-    """Совместный дизайн ``(k, h)`` для CUSUM-SN."""
+    """Совместный подбор ``(k, h)`` для CUSUM-SN."""
     return design_kh(
         n, target_arl, delta, statistic='SN', sided=sided,
         distribution=distribution, **kwargs,
@@ -1534,7 +1534,7 @@ def design_signed_rank_kh(
     distribution: str = 'normal',
     **kwargs: Any,
 ) -> DesignKHResult:
-    """Совместный дизайн ``(k, h)`` для CUSUM-SR."""
+    """Совместный подбор ``(k, h)`` для CUSUM-SR."""
     return design_kh(
         n, target_arl, delta, statistic='SR', sided=sided,
         distribution=distribution, **kwargs,
