@@ -582,9 +582,9 @@ class SignedRankChart(BaseControlChart):
         colors = (PALETTE[0], PALETTE[3], PALETTE[2])
 
         axes[0].plot(n_range, cons_a, 'o-', color=colors[0],
-                     label=f'Точный (FAR₀ = {self.far0})')
+                     label=rf'Точный ($FAR_0 = {self.far0}$)')
         axes[0].plot(n_range, near_a, 's--', color=colors[1],
-                     label=f'Ближайший (α = {self.alpha})')
+                     label=rf'Ближайший ($\alpha = {self.alpha}$)')
         axes[0].plot(n_range, sym_a, '^:', color=colors[2],
                      label='Нормальная аппроксимация')
         axes[0].set_xlabel('n (размер подгруппы)')
@@ -600,9 +600,9 @@ class SignedRankChart(BaseControlChart):
         axes[1].plot(n_range, sym_far, '^:', color=colors[2],
                      label='Нормальная аппроксимация')
         axes[1].axhline(self.far0, color=colors[0], linestyle=':',
-                        alpha=0.6, label=f'FAR₀ = {self.far0}')
+                        alpha=0.6, label=rf'$FAR_0 = {self.far0}$')
         axes[1].axhline(self.alpha, color=colors[1], linestyle=':',
-                        alpha=0.6, label=f'α = {self.alpha}')
+                        alpha=0.6, label=rf'$\alpha = {self.alpha}$')
         axes[1].set_xlabel('n (размер подгруппы)')
         axes[1].set_ylabel('Достигнутый FAR')
         axes[1].set_title('Достигнутые FAR')

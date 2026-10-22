@@ -2,6 +2,12 @@
 
 from nonparametric_charts.utils.data_loader import DataLoader
 from nonparametric_charts.utils.data_preprocessor import DataPreprocessor, DataPipeline
+from nonparametric_charts.utils.data_quality import (
+    find_iqr_outliers,
+    iqr_fences,
+    replace_outliers_with_subgroup_median,
+    summarize_dataset,
+)
 from nonparametric_charts.utils.statistics import (
     sign_counts,
     sign_statistic,
@@ -65,6 +71,10 @@ __all__ = [
     'DataLoader',
     'DataPreprocessor',
     'DataPipeline',
+    'find_iqr_outliers',
+    'iqr_fences',
+    'replace_outliers_with_subgroup_median',
+    'summarize_dataset',
     'sign_counts',
     'sign_statistic',
     'signed_rank_details',
