@@ -45,6 +45,7 @@ from scipy import stats
 from scipy.integrate import cumulative_trapezoid
 
 from nonparametric_charts.utils.run_length import (
+    _cusum_arl,
     cusum_run_length,
     sign_step_distribution,
     signed_rank_step_distribution,
@@ -707,11 +708,8 @@ def _cached_arl_core(
     sided: str,
 ) -> float:
     """ARL по нормированному распределению шага (внутренний кэш)."""
-    return float(
-        cusum_run_length(
-            step_values, step_probabilities, k, h, sided=sided,
-            max_quantile=0.5,
-        ).arl
+    return _cusum_arl(
+        step_values, step_probabilities, k, h, sided=sided
     )
 
 
@@ -961,36 +959,107 @@ def design_h(
     probabilities = probabilities / probabilities.sum()
 
     step = _lattice_step(values, k)
-    best_nearest: Optional[Tuple[float, float]] = None
-    best_conservative: Optional[Tuple[float, float]] = None
+    evaluations: Dict[int, Optional[float]] = {}
 
-    for index in range(1, max_candidates + 1):
-        h = step * index
+    def arl_at(index: int) -> Optional[float]:
+        """ARL на ``h = step·index``; ``None`` — расчёт невозможен."""
+        if index in evaluations:
+            return evaluations[index]
         try:
             arl = cached_arl(
-                values, probabilities, k, h, sided=sided
+                values, probabilities, k, step * index, sided=sided
             )
         except ValueError:
-            continue
+            arl = None
+        evaluations[index] = arl
+        return arl
 
-        if best_nearest is None or abs(arl - target_arl) < abs(
-            best_nearest[0] - target_arl
+    def linear_search() -> Tuple[
+        Tuple[float, float], Optional[Tuple[float, float]]
+    ]:
+        """Прежний линейный скан — запасной путь при немонотонном ARL."""
+        nearest: Optional[Tuple[float, float]] = None
+        conservative: Optional[Tuple[float, float]] = None
+        for index in range(1, max_candidates + 1):
+            arl = arl_at(index)
+            if arl is None:
+                continue
+            if nearest is None or abs(arl - target_arl) < abs(
+                nearest[0] - target_arl
+            ):
+                nearest = (arl, step * index)
+            if arl <= target_arl and (
+                conservative is None or arl >= conservative[0]
+            ):
+                conservative = (arl, step * index)
+            if nearest is not None and arl > 2.0 * target_arl and index > 1:
+                break
+        if nearest is None:
+            raise ValueError(
+                'Не удалось подобрать h: карта не сигнализирует ни при одном h'
+            )
+        return nearest, conservative
+
+    def search() -> Tuple[
+        Tuple[float, float], Optional[Tuple[float, float]]
+    ]:
+        """Поиск перехода ARL через номинал по монотонности."""
+        first = arl_at(1)
+        if first is None:
+            # Нет сигнала уже на первом шаге: линейный скан точнее покажет,
+            # достижим ли он вообще.
+            return linear_search()
+
+        # Экспоненциально расширяем верхнюю границу до первого ARL ≥ номинала.
+        upper = 1
+        while True:
+            arl = arl_at(upper)
+            if arl is not None and arl >= target_arl:
+                break
+            if upper >= max_candidates:
+                return linear_search()
+            upper = min(upper * 2, max_candidates)
+        if arl_at(upper) is None:
+            return linear_search()
+
+        # Бисекция: первый индекс с ARL ≥ номинала.
+        low, high = 0, upper
+        while high - low > 1:
+            middle = (low + high) // 2
+            arl = arl_at(middle)
+            if arl is None or arl >= target_arl:
+                high = middle
+            else:
+                low = middle
+        crossing = high
+
+        above = arl_at(crossing)
+        below_index = crossing - 1
+        below = arl_at(below_index) if below_index >= 1 else None
+
+        # Консервативное правило: наибольшее h с ARL ≤ номинала. Если ARL
+        # точно равна номиналу, плато может тянуться дальше точки перехода.
+        conservative: Optional[Tuple[float, float]] = None
+        if above is not None and above == target_arl:
+            index = crossing
+            while index < max_candidates and arl_at(index + 1) == target_arl:
+                index += 1
+            conservative = (target_arl, step * index)
+        elif below is not None and below <= target_arl:
+            conservative = (below, step * below_index)
+
+        if below is not None and (
+            above is None
+            or abs(below - target_arl) <= abs(above - target_arl)
         ):
-            best_nearest = (arl, h)
-        if arl <= target_arl and (
-            best_conservative is None or arl >= best_conservative[0]
-        ):
-            best_conservative = (arl, h)
+            nearest = (below, step * below_index)
+        elif above is not None:
+            nearest = (above, step * crossing)
+        else:
+            return linear_search()
+        return nearest, conservative
 
-        # Ступенчатая функция: как только ARL заметно превысила номинал
-        # и начала расти, дальнейшие h только ухудшают приближение.
-        if best_nearest is not None and arl > 2.0 * target_arl and index > 1:
-            break
-
-    if best_nearest is None:
-        raise ValueError(
-            'Не удалось подобрать h: карта не сигнализирует ни при одном h'
-        )
+    best_nearest, best_conservative = search()
 
     conservative_fallback = False
     if ic_rule == 'conservative' and best_conservative is not None:
@@ -1019,7 +1088,7 @@ def design_h(
         sided=sided,
         statistic=statistic,
         n=n,
-        n_evaluated=min(index, max_candidates),
+        n_evaluated=len(evaluations),
         note='; '.join(notes),
     )
 

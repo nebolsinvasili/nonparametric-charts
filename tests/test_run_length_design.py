@@ -301,6 +301,51 @@ def test_design_h_reports_unreachable_nominal() -> None:
     assert result.note
 
 
+@pytest.mark.parametrize(
+    'statistic,n,k,target,sided,rule,expected_h,expected_arl',
+    [
+        ('SN', 10, 1.0, 500.0, 'two', 'conservative', 23.0,
+         460.01492767541816),
+        ('SN', 10, 9.0, 500.0, 'upper', 'nearest', 1.0, 1024.0),
+        ('SR', 10, 22.0, 500.0, 'two', 'conservative', 41.0,
+         494.7317800809609),
+        ('SR', 4, 4.0, 370.0, 'two', 'nearest', 18.0,
+         404.8231245540288),
+        ('SR', 10, 22.0, 100.0, 'upper', 'nearest', 25.0,
+         95.8920291051038),
+    ],
+)
+def test_design_h_golden_cases(
+    statistic: str,
+    n: int,
+    k: float,
+    target: float,
+    sided: str,
+    rule: str,
+    expected_h: float,
+    expected_arl: float,
+) -> None:
+    """Поиск по монотонности возвращает те же ``h`` и ``ARL``, что скан."""
+    values, probabilities = (
+        sign_step_distribution(n)
+        if statistic == 'SN'
+        else signed_rank_step_distribution(n)
+    )
+    result = design_h(
+        values, probabilities, target, k,
+        sided=sided, statistic=statistic, n=n, ic_rule=rule,
+    )
+    assert result.h == expected_h
+    assert result.arl == expected_arl
+
+
+def test_design_h_search_is_logarithmic() -> None:
+    """Бисекция не перебирает все ``h`` подряд даже при большом интервале."""
+    result = design_signed_rank_h(10, 500, 22, sided='two')
+    assert result.h == pytest.approx(41.0)
+    assert result.n_evaluated <= 20
+
+
 def test_design_h_validates_arguments() -> None:
     values, probabilities = sign_step_distribution(5)
     with pytest.raises(ValueError, match='> 1'):
@@ -474,6 +519,19 @@ def test_design_sign_kh_returns_optimal_design() -> None:
     feasible = result.table[result.table['feasible']]
     assert result.arl_ooc == pytest.approx(feasible['arl_ooc'].min())
     assert result.note
+
+
+def test_design_kh_golden_pairs() -> None:
+    """Пары ``(k, h)`` и ARL не меняются при ускорении поиска."""
+    sign = design_sign_kh(10, 500, 1.0, sided='two')
+    assert (sign.k, sign.h) == (7.0, 2.0)
+    assert sign.arl_ic == 466.8500881834235
+    assert sign.arl_ooc == 3.8190592701071626
+
+    rank = design_signed_rank_kh(10, 500, 1.0, sided='two')
+    assert (rank.k, rank.h) == (22.0, 41.0)
+    assert rank.arl_ic == 494.7317800809609
+    assert rank.arl_ooc == 2.3891775950946332
 
 
 def test_design_signed_rank_kh_small_n() -> None:
