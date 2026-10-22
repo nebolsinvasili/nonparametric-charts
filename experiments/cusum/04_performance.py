@@ -44,6 +44,9 @@ from nonparametric_charts.utils.run_length import (  # noqa: E402
     sign_step_distribution,
     signed_rank_step_distribution,
 )
+from nonparametric_charts.utils.run_length_design import (  # noqa: E402
+    design_kh,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 RESULTS = ROOT / "results" / "experiments"
@@ -207,6 +210,33 @@ def plot_costs(costs: dict[str, dict[str, np.ndarray]]) -> Path:
     return path
 
 
+def print_design_search_table() -> None:
+    """Время автоматического подбора ``(k, h)`` после ускорения."""
+    cases = (
+        ('SN', 10, 500.0, 1.0),
+        ('SN', 20, 370.0, 1.0),
+        ('SR', 10, 500.0, 1.0),
+    )
+    print('\nПодбор (k, h) через design_kh (двусторонняя карта, δ=1):')
+    header = (
+        f"{'статистика':>10} {'n':>3} {'ARL_IC':>7} {'k':>4} {'h':>4} "
+        f"{'ARL_IC':>10} {'вычислено':>10} {'время, с':>9}"
+    )
+    print(header)
+    print('-' * len(header))
+    for statistic, n, target, delta in cases:
+        start = time.perf_counter()
+        result = design_kh(
+            n, target, delta, statistic=statistic, sided='two'
+        )
+        elapsed = time.perf_counter() - start
+        print(
+            f'{statistic:>10} {n:>3} {target:>7g} {result.k:>4g} '
+            f'{result.h:>4g} {result.arl_ic:>10.2f} '
+            f'{result.n_evaluated:>10} {elapsed:>9.3f}'
+        )
+
+
 def main() -> int:
     """Печать таблиц производительности с записью в файл."""
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -243,6 +273,7 @@ def _run() -> int:
 
     print_design_table()
     costs = sweep_costs()
+    print_design_search_table()
 
     print('\nРост стоимости по n (двусторонняя карта):')
     print(f"{'n':>3} {'SN, мс':>9} {'SN, сост.':>10} "
@@ -257,13 +288,16 @@ def _run() -> int:
         )
 
     path = plot_costs(costs)
-    print('\nВывод: основное время — развёртка PMF (пропорциональна ARL), '
-          'а не решение системы: матрица Q мала (единицы-десятки состояний). '
-          'Для SN состояния — решётка значений SN (шаг 2) до h, поэтому при '
-          'фиксированном h их число не зависит от n (в реперном варианте '
-          '2–3). Для SR размах статистики n(n+1)/2 растёт как n², и число '
-          'состояний растёт линейно по n, а вместе с ним — время '
-          'построения Q.')
+    print('\nВывод: в полном расчёте RL основное время — развёртка PMF '
+          '(пропорциональна ARL), а не решение системы: матрица Q мала '
+          '(единицы-десятки состояний). Для SN состояния — решётка значений '
+          'SN (шаг 2) до h, поэтому при фиксированном h их число не зависит '
+          'от n (в реперном варианте 2–3). Для SR размах статистики '
+          'n(n+1)/2 растёт как n², и число состояний растёт линейно по n, '
+          'а вместе с ним — время построения Q.')
+    print('В подборе (k, h) PMF не нужна: cached_arl считает только ARL, '
+          'а h ищется бисекцией по монотонности. Время подбора теперь '
+          'определяется построением Q, а не развёрткой распределения.')
     print(f'\nГрафик сохранён: {path.relative_to(ROOT)}')
     return 0
 

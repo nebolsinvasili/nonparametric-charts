@@ -247,6 +247,19 @@ def _normalize_state(value: float) -> float:
     return 0.0 if normalized == 0 else normalized
 
 
+def _on_half_grid(step_values: Sequence[float], k: float) -> bool:
+    """
+    Лежат ли шаги и ``k`` на сетке с шагом 0.5.
+
+    Тогда состояния — точные двоичные дроби, и округление при нормализации
+    не нужно: это заметно ускоряет обход состояний на сетках подбора.
+    """
+    return all(
+        float(value) * 2.0 == round(float(value) * 2.0)
+        for value in step_values
+    ) and float(k) * 2.0 == round(float(k) * 2.0)
+
+
 def _prepare_step_distribution(
     step_values: Sequence[float],
     step_probabilities: Sequence[float],
@@ -314,6 +327,7 @@ def _reachable_upper_states(
     start = 0.0
     states = {start}
     queue = [start]
+    exact = _on_half_grid(step_values, k)
 
     while queue:
         state = queue.pop()
@@ -321,7 +335,10 @@ def _reachable_upper_states(
             candidate = max(0.0, state + value - k)
             if candidate >= h:
                 continue
-            candidate = _normalize_state(candidate)
+            if not exact:
+                candidate = round(candidate, _STATE_DECIMALS)
+                if candidate == 0:
+                    candidate = 0.0
             if candidate not in states:
                 if len(states) >= _MAX_STATES:
                     raise ValueError(
@@ -343,6 +360,7 @@ def _reachable_two_sided_states(
     start = (0.0, 0.0)
     states = {start}
     queue = [start]
+    exact = _on_half_grid(step_values, k)
 
     while queue:
         upper, lower = queue.pop()
@@ -351,8 +369,15 @@ def _reachable_two_sided_states(
             new_lower = min(0.0, lower + value + k)
             if new_upper >= h or new_lower <= -h:
                 continue
-            candidate = (_normalize_state(new_upper),
-                         _normalize_state(new_lower))
+            if exact:
+                candidate = (new_upper, new_lower)
+            else:
+                new_upper = round(new_upper, _STATE_DECIMALS)
+                new_lower = round(new_lower, _STATE_DECIMALS)
+                candidate = (
+                    0.0 if new_upper == 0 else new_upper,
+                    0.0 if new_lower == 0 else new_lower,
+                )
             if candidate not in states:
                 if len(states) >= _MAX_STATES:
                     raise ValueError(
@@ -377,19 +402,38 @@ def _transition_matrix_upper(
     h: float,
 ) -> np.ndarray:
     """Матрица ``Q`` для верхней односторонней карты."""
-    index = {state: i for i, state in enumerate(states)}
     size = len(states)
+    state_array = np.asarray(states, dtype=float)
+    candidates = np.maximum(
+        0.0, state_array[:, None] + step_values[None, :] - k
+    )
+    mask = candidates < h
+    rows, columns = np.nonzero(mask)
+    if rows.size == 0:
+        return np.zeros((size, size), dtype=float)
+
+    index = {state: i for i, state in enumerate(states)}
+    new_states = candidates[rows, columns]
+    exact = _on_half_grid(step_values, k)
+    if exact:
+        targets = np.fromiter(
+            (index[float(value)] for value in new_states),
+            dtype=np.int64,
+            count=rows.size,
+        )
+    else:
+        new_states = np.round(new_states, _STATE_DECIMALS)
+        targets = np.fromiter(
+            (
+                index[0.0 if value == 0 else float(value)]
+                for value in new_states
+            ),
+            dtype=np.int64,
+            count=rows.size,
+        )
+
     matrix = np.zeros((size, size), dtype=float)
-
-    for i, state in enumerate(states):
-        for value, probability in zip(step_values, step_probabilities):
-            if probability == 0.0:
-                continue
-            candidate = max(0.0, state + value - k)
-            if candidate >= h:
-                continue
-            matrix[i, index[_normalize_state(candidate)]] += probability
-
+    np.add.at(matrix, (rows, targets), step_probabilities[columns])
     return matrix
 
 
@@ -403,20 +447,51 @@ def _transition_matrix_two_sided(
     """Матрица ``Q`` для двусторонней карты (состояние — пара ветвей)."""
     index = {state: i for i, state in enumerate(states)}
     size = len(states)
+
+    upper = np.fromiter((state[0] for state in states), dtype=float,
+                        count=size)
+    lower = np.fromiter((state[1] for state in states), dtype=float,
+                        count=size)
+    candidates_upper = np.maximum(
+        0.0, upper[:, None] + step_values[None, :] - k
+    )
+    candidates_lower = np.minimum(
+        0.0, lower[:, None] + step_values[None, :] + k
+    )
+    mask = (candidates_upper < h) & (candidates_lower > -h)
+    rows, columns = np.nonzero(mask)
+    if rows.size == 0:
+        return np.zeros((size, size), dtype=float)
+
+    new_upper = candidates_upper[rows, columns]
+    new_lower = candidates_lower[rows, columns]
+    exact = _on_half_grid(step_values, k)
+    if exact:
+        targets = np.fromiter(
+            (
+                index[(float(u), float(l))]
+                for u, l in zip(new_upper, new_lower)
+            ),
+            dtype=np.int64,
+            count=rows.size,
+        )
+    else:
+        new_upper = np.round(new_upper, _STATE_DECIMALS)
+        new_lower = np.round(new_lower, _STATE_DECIMALS)
+        targets = np.fromiter(
+            (
+                index[
+                    (0.0 if u == 0 else float(u),
+                     0.0 if l == 0 else float(l))
+                ]
+                for u, l in zip(new_upper, new_lower)
+            ),
+            dtype=np.int64,
+            count=rows.size,
+        )
+
     matrix = np.zeros((size, size), dtype=float)
-
-    for i, (upper, lower) in enumerate(states):
-        for value, probability in zip(step_values, step_probabilities):
-            if probability == 0.0:
-                continue
-            new_upper = max(0.0, upper + value - k)
-            new_lower = min(0.0, lower + value + k)
-            if new_upper >= h or new_lower <= -h:
-                continue
-            candidate = (_normalize_state(new_upper),
-                         _normalize_state(new_lower))
-            matrix[i, index[candidate]] += probability
-
+    np.add.at(matrix, (rows, targets), step_probabilities[columns])
     return matrix
 
 
@@ -424,17 +499,14 @@ def _transition_matrix_two_sided(
 #  Характеристики RL по матрице Q
 # --------------------------------------------------------------------------- #
 
-def _run_length_characteristics(
+def _arl_terms(
     matrix: np.ndarray,
-    *,
-    max_quantile: float = 0.9999,
-    quantiles: Iterable[float] = (0.05, 0.25, 0.5, 0.75, 0.95),
-    max_t: int = 2_000_000,
-) -> Tuple[float, float, np.ndarray, np.ndarray, Dict[float, int], bool]:
+) -> Tuple[float, np.ndarray, np.ndarray, np.ndarray]:
     """
-    ARL, SDRL и усечённое распределение RL по матрице ``Q``.
+    ARL и вспомогательные величины по матрице ``Q``.
 
-    Используются ур. 3.22–3.24 (Chakraborti & Graham, 2019, стр. 112).
+    Возвращает ``(ARL, I, (I − Q)⁻¹ 1, (I − Q) 1)``. Проверка достижимости
+    поглощения общая для полного расчёта RL и для подбора ``(k, h)``.
     """
     size = matrix.shape[0]
     identity = np.eye(size)
@@ -467,6 +539,31 @@ def _run_length_characteristics(
     # ARL = ξ (I − Q)⁻¹ 1
     fundamental = np.linalg.solve(identity - matrix, ones)
     arl = float(start @ fundamental)
+    return arl, identity, fundamental, absorbing_probability
+
+
+def _matrix_arl(matrix: np.ndarray) -> float:
+    """Только ``ARL`` по матрице ``Q``, без PMF и SDRL."""
+    arl, _, _, _ = _arl_terms(matrix)
+    return arl
+
+
+def _run_length_characteristics(
+    matrix: np.ndarray,
+    *,
+    max_quantile: float = 0.9999,
+    quantiles: Iterable[float] = (0.05, 0.25, 0.5, 0.75, 0.95),
+    max_t: int = 2_000_000,
+) -> Tuple[float, float, np.ndarray, np.ndarray, Dict[float, int], bool]:
+    """
+    ARL, SDRL и усечённое распределение RL по матрице ``Q``.
+
+    Используются ур. 3.22–3.24 (Chakraborti & Graham, 2019, стр. 112).
+    """
+    start = np.zeros(matrix.shape[0])
+    start[0] = 1.0
+
+    arl, identity, fundamental, absorbing_probability = _arl_terms(matrix)
 
     # E(N²) = ξ (I + Q)(I − Q)⁻² 1
     second_moment_matrix = np.linalg.solve(identity - matrix, fundamental)
@@ -503,6 +600,54 @@ def _run_length_characteristics(
 # --------------------------------------------------------------------------- #
 #  Публичный интерфейс
 # --------------------------------------------------------------------------- #
+
+def _build_chain(
+    values: np.ndarray,
+    probabilities: np.ndarray,
+    k: float,
+    h: float,
+    sided: str,
+) -> Tuple[Sequence, np.ndarray]:
+    """Непоглощающие состояния и матрица ``Q`` для подготовленного шага."""
+    if sided == 'two':
+        states = _reachable_two_sided_states(values, k, h)
+        matrix = _transition_matrix_two_sided(
+            states, values, probabilities, k, h
+        )
+    else:
+        states = _reachable_upper_states(values, k, h)
+        matrix = _transition_matrix_upper(
+            states, values, probabilities, k, h
+        )
+    return states, matrix
+
+
+def _cusum_arl(
+    step_values: Sequence[float],
+    step_probabilities: Sequence[float],
+    k: float,
+    h: float,
+    *,
+    sided: str = 'two',
+) -> float:
+    """
+    ``ARL`` CUSUM без PMF, SDRL и перцентилей.
+
+    Нужен для сеток подбора ``(k, h)``: отбрасывает развёртку распределения,
+    которая при больших ``ARL`` занимает основное время. Результат совпадает
+    с ``cusum_run_length(...).arl`` при тех же аргументах.
+    """
+    if k <= 0:
+        raise ValueError(f'Референсное значение k должно быть > 0, получено {k}')
+    if h <= 0:
+        raise ValueError(f'Интервал решения h должно быть > 0, получено {h}')
+
+    values, probabilities = _prepare_step_distribution(
+        step_values, step_probabilities, sided
+    )
+    _, matrix = _build_chain(values, probabilities, k, h, sided)
+    return _matrix_arl(matrix)
+
 
 def cusum_run_length(
     step_values: Sequence[float],
@@ -548,16 +693,8 @@ def cusum_run_length(
         step_values, step_probabilities, sided
     )
 
-    if sided == 'two':
-        states = _reachable_two_sided_states(values, k, h)
-        matrix = _transition_matrix_two_sided(
-            states, values, probabilities, k, h
-        )
-        state_array = np.asarray(states, dtype=float)
-    else:
-        states = _reachable_upper_states(values, k, h)
-        matrix = _transition_matrix_upper(states, values, probabilities, k, h)
-        state_array = np.asarray(states, dtype=float)
+    states, matrix = _build_chain(values, probabilities, k, h, sided)
+    state_array = np.asarray(states, dtype=float)
 
     arl, sdrl, pmf, cdf, percentiles, truncated = _run_length_characteristics(
         matrix, max_quantile=max_quantile
