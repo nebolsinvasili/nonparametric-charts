@@ -12,6 +12,7 @@
     npc experiment           # запустить анализы SN, SR и CUSUM (experiments/)
     npc experiment sn        # только SN
     npc experiment cusum     # все пронумерованные скрипты experiments/cusum/
+    npc experiment cusum --full   # полный режим (дольше, больше случаев)
     npc experiment --list    # список скриптов экспериментов
 
 Команда ищет корень репозитория рядом с исходниками (src-layout) или вверх
@@ -22,10 +23,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 def _repo_root() -> Path:
@@ -48,9 +50,13 @@ def _repo_root() -> Path:
     )
 
 
-def _run(cmd: List[str], cwd: Path) -> int:
+def _run(
+    cmd: List[str],
+    cwd: Path,
+    env: Optional[Dict[str, str]] = None,
+) -> int:
     """Запустить подпроцесс и вернуть его код возврата."""
-    return subprocess.call(cmd, cwd=str(cwd))
+    return subprocess.call(cmd, cwd=str(cwd), env=env)
 
 
 def _translate_test_args(pytest_args: List[str]) -> List[str]:
@@ -125,6 +131,10 @@ def cmd_experiment(args: argparse.Namespace) -> int:
             print(path.relative_to(root))
         return 0
 
+    env = os.environ.copy()
+    if getattr(args, "full", False):
+        env["NPC_EXPERIMENT_FULL"] = "1"
+
     kinds = list(_EXPERIMENT_KINDS) if args.kind == "all" else [args.kind]
     rc = 0
     for kind in kinds:
@@ -135,7 +145,7 @@ def cmd_experiment(args: argparse.Namespace) -> int:
             continue
         for script in scripts:
             print(f">>> {script.relative_to(root)}", flush=True)
-            rc |= _run([sys.executable, str(script)], root)
+            rc |= _run([sys.executable, str(script)], root, env)
     return rc
 
 
@@ -174,6 +184,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_exp.add_argument(
         "--list", action="store_true",
         help="показать доступные скрипты экспериментов",
+    )
+    p_exp.add_argument(
+        "--full", action="store_true",
+        help="полный режим экспериментов (NPC_EXPERIMENT_FULL=1)",
     )
     p_exp.set_defaults(func=cmd_experiment)
 

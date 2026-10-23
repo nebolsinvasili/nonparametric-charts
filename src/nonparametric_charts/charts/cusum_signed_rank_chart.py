@@ -534,7 +534,7 @@ class CusumSignedRankChart(BaseControlChart):
             Распределение процесса при сдвиге.
         **kwargs
             Дополнительные параметры ``design_kh`` (``k_values``,
-            ``k_fractions``, ``tol`` и т. д.).
+            ``k_fractions``, ``tol``, ``n_jobs`` и т. д.).
 
         Returns
         -------

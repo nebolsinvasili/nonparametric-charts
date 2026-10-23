@@ -1,0 +1,6 @@
+"name","statistic","n","k","h","shift","sided","n_sim","t"
+"sn_ic","SN",10,1,4,0,"upper",150,300
+"sn_shift","SN",10,1,4,0.5,"upper",150,300
+"sn_two","SN",10,1,4,0,"two.sided",150,300
+"sr_ic","SR",4,2,6,0,"upper",100,250
+"sr_shift","SR",4,2,6,0.5,"upper",100,250

@@ -18,6 +18,15 @@ def test_experiment_parser_accepts_cusum() -> None:
     args = parser.parse_args(['experiment', 'cusum'])
     assert args.kind == 'cusum'
     assert args.list is False
+    assert args.full is False
+
+
+def test_experiment_parser_accepts_full() -> None:
+    """``--full`` включает полный режим экспериментов."""
+    parser = build_parser()
+    args = parser.parse_args(['experiment', 'cusum', '--full'])
+    assert args.kind == 'cusum'
+    assert args.full is True
 
 
 def test_experiment_parser_accepts_all_kinds() -> None:
@@ -46,6 +55,9 @@ def test_experiment_scripts_cusum_are_numbered() -> None:
     assert names == sorted(names)
     assert all(name[:2].isdigit() for name in names)
     assert (root / 'experiments' / 'cusum' / '01_oc_curves.py') in scripts
+    for name in ('07_grid_resolution.py', '08_search_time.py',
+                 '09_parallel.py'):
+        assert (root / 'experiments' / 'cusum' / name) in scripts
 
 
 def test_experiment_scripts_unknown_kind() -> None:

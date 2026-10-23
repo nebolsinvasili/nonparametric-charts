@@ -25,17 +25,22 @@
 
 from __future__ import annotations
 
+import multiprocessing as mp
+import os
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 from math import factorial, gcd, inf, sqrt
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
     Optional,
     Sequence,
     Tuple,
+    TypeVar,
     Union,
 )
 
@@ -898,6 +903,100 @@ def _values_step(
     return step if step > 0 else 1.0
 
 
+# --------------------------------------------------------------------------- #
+#  Параллельное выполнение независимых задач подбора
+# --------------------------------------------------------------------------- #
+
+_T = TypeVar('_T')
+_R = TypeVar('_R')
+
+
+def _resolve_n_jobs(n_jobs: int) -> int:
+    """
+    Привести число процессов к допустимому значению.
+
+    ``1`` — последовательный расчёт; ``-1`` — все доступные ядра;
+    ``0`` и значения меньше ``-1`` запрещены.
+    """
+    if n_jobs == -1:
+        return max(1, os.cpu_count() or 1)
+    if n_jobs < -1:
+        raise ValueError(
+            f'n_jobs должен быть -1 или >= 1, получено {n_jobs}'
+        )
+    if n_jobs == 0:
+        raise ValueError('n_jobs не может быть 0')
+    return int(n_jobs)
+
+
+def _mp_context() -> mp.context.BaseContext:
+    """Контекст процессов: ``fork``, если доступен, иначе системный."""
+    try:
+        return mp.get_context('fork')
+    except ValueError:  # pragma: no cover - Windows/macOS без fork
+        return mp.get_context()
+
+
+def _parallel_map(
+    function: Callable[[_T], _R],
+    tasks: Sequence[_T],
+    n_jobs: int,
+) -> List[_R]:
+    """
+    Выполнить независимые задачи в пуле процессов, сохранив порядок.
+
+    При ``n_jobs == 1`` или одной задаче пул не создаётся. Если процессный
+    пул недоступен (например, вызов из демонического процесса), происходит
+    откат к последовательному расчёту — результат не меняется.
+    """
+    workers = min(_resolve_n_jobs(n_jobs), len(tasks))
+    if workers <= 1:
+        return [function(task) for task in tasks]
+    try:
+        with ProcessPoolExecutor(
+            max_workers=workers, mp_context=_mp_context()
+        ) as pool:
+            return list(pool.map(function, tasks))
+    except (OSError, RuntimeError):  # pragma: no cover - среда без процессов
+        return [function(task) for task in tasks]
+
+
+def _design_h_task(payload: Tuple) -> Optional[DesignResult]:
+    """Задача для пула: подобрать ``h`` при готовом распределении."""
+    (
+        ic_values,
+        ic_probabilities,
+        target_arl,
+        k,
+        sided,
+        statistic,
+        n,
+        max_candidates,
+        ic_rule,
+    ) = payload
+    try:
+        return design_h(
+            ic_values,
+            ic_probabilities,
+            target_arl,
+            k,
+            sided=sided,
+            statistic=statistic,
+            n=n,
+            max_candidates=max_candidates,
+            ic_rule=ic_rule,
+        )
+    except ValueError:
+        return None
+
+
+def _design_from_shift_task(payload: Tuple) -> DesignResult:
+    """Задача пула: подобрать ``h`` для узла ``k`` (сдвиг → ``k``)."""
+    designer_name, args, kwargs = payload
+    designer = design_sign_h if designer_name == 'SN' else design_signed_rank_h
+    return designer(*args, **kwargs)
+
+
 def design_h(
     step_values: Sequence[float],
     step_probabilities: Sequence[float],
@@ -1251,6 +1350,7 @@ def design_k_from_shift(
     n_sim: int = 200_000,
     seed: Optional[int] = None,
     quadrature_points: int = 2_001,
+    n_jobs: int = 1,
 ) -> DesignResult:
     """
     Подбор ``(k, h)`` «от постановки задачи»: сдвиг → ``k``, номинал → ``h``.
@@ -1291,6 +1391,9 @@ def design_k_from_shift(
         Передаются в ``design_h``.
     method, n_sim, seed, quadrature_points
         Параметры распределения статистики под сдвигом.
+    n_jobs : int, default=1
+        Число процессов для независимых узлов ``k``: ``1`` — последовательно,
+        ``-1`` — все ядра. Результаты не зависят от ``n_jobs``.
 
     Returns
     -------
@@ -1355,14 +1458,16 @@ def design_k_from_shift(
             f'(k* = {k_star:.3f}, max|Z| = {max_absolute:g})'
         )
 
-    designer = design_sign_h if statistic == 'SN' else design_signed_rank_h
-    results = [
-        designer(
-            n, target_arl, k, sided=sided,
-            max_candidates=max_candidates, ic_rule=ic_rule,
-        )
+    kwargs = {
+        'sided': sided,
+        'max_candidates': max_candidates,
+        'ic_rule': ic_rule,
+    }
+    tasks = [
+        (statistic, (n, target_arl, k), kwargs)
         for k in candidates
     ]
+    results = _parallel_map(_design_from_shift_task, tasks, n_jobs)
 
     below = [item for item in results if item.arl <= target_arl]
     acceptable = [item for item in below if item.relative_error <= tol]
@@ -1517,6 +1622,7 @@ def design_kh(
     seed: Optional[int] = None,
     quadrature_points: int = 2_001,
     max_candidates: int = 5_000,
+    n_jobs: int = 1,
 ) -> DesignKHResult:
     """
     Совместный подбор ``(k, h)`` под номинальный ``ARL_IC`` и сдвиг ``δ``.
@@ -1571,6 +1677,10 @@ def design_kh(
         Параметры распределения ``SR`` под сдвигом.
     max_candidates : int, default=5000
         Предохранитель перебора ``h`` внутри ``design_h``.
+    n_jobs : int, default=1
+        Число процессов для независимых кандидатов ``k``: ``1`` —
+        последовательно, ``-1`` — все ядра. Порядок строк таблицы и
+        выбранная пара от ``n_jobs`` не зависят.
 
     Returns
     -------
@@ -1688,16 +1798,26 @@ def design_kh(
             'Не осталось допустимых k: все кандидаты вне (0, max|Z|)'
         )
 
+    tasks = [
+        (
+            ic_values,
+            ic_probabilities,
+            target_arl,
+            k,
+            sided,
+            statistic,
+            n,
+            max_candidates,
+            ic_rule,
+        )
+        for k in candidates
+    ]
+    designs = _parallel_map(_design_h_task, tasks, n_jobs)
+
     records: List[Dict[str, Any]] = []
     evaluated = 0
-    for k in candidates:
-        try:
-            design = design_h(
-                ic_values, ic_probabilities, target_arl, k,
-                sided=sided, statistic=statistic, n=n,
-                max_candidates=max_candidates, ic_rule=ic_rule,
-            )
-        except ValueError:
+    for k, design in zip(candidates, designs):
+        if design is None:
             records.append({
                 'k': k, 'h': np.nan, 'arl_ic': np.inf, 'arl_ooc': np.inf,
                 'relative_error_ic': np.inf, 'feasible': False,

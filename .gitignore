@@ -29,11 +29,11 @@ dist/
 .ipynb_checkpoints/
 
 # Результаты
-results/
-plots/
-*.png
-*.jpg
-*.html
+# results/
+# plots/
+# *.png
+# *.jpg
+# *.html
 
 # IDE
 .vscode/
@@ -52,11 +52,11 @@ docs/reports/build/
 *.out
 
 # Промежуточные данные опытов (пересоздаются сценариями в experiments/)
-experiments/sn/data_cross*.csv
-experiments/sn/data_modes_*.csv
-experiments/sn/modes_npspc_limits.csv
-experiments/sn/modes_summary.csv
-experiments/sr/data_sr_*.csv
-experiments/sr/sr_*.csv
-# Кросс-валидация CUSUM (этап 3b.10)
-experiments/cusum/xval/
+# experiments/sn/data_cross*.csv
+# experiments/sn/data_modes_*.csv
+# experiments/sn/modes_npspc_limits.csv
+# experiments/sn/modes_summary.csv
+# experiments/sr/data_sr_*.csv
+# experiments/sr/sr_*.csv
+# # Кросс-валидация CUSUM (этап 3b.10)
+# experiments/cusum/xval/
