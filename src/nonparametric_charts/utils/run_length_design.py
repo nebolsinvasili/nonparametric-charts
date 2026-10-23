@@ -68,6 +68,7 @@ __all__ = [
     'design_sign_h',
     'design_signed_rank_h',
     'reference_k',
+    'design_k_from_shift',
     'DesignKHResult',
     'design_kh',
     'design_sign_kh',
@@ -802,6 +803,13 @@ class DesignResult:
         Сколько вариантов ``h`` просчитано.
     note : str
         Пояснение (достижимость номинала на решётке).
+    k_star : float, optional
+        ``E[Z_δ]/2`` до привязки к решётке (заполняет
+        ``design_k_from_shift``).
+    lattice_step : float, optional
+        Шаг решётки ``k``, использованный при выборе.
+    candidates : tuple of float
+        Проверенные узлы ``k``.
     """
 
     h: float
@@ -813,6 +821,9 @@ class DesignResult:
     n: Optional[int]
     n_evaluated: int
     note: str = ''
+    k_star: Optional[float] = None
+    lattice_step: Optional[float] = None
+    candidates: Tuple[float, ...] = ()
 
     @property
     def relative_error(self) -> float:
@@ -832,6 +843,9 @@ class DesignResult:
             'sided': self.sided,
             'n_evaluated': self.n_evaluated,
             'note': self.note,
+            'k_star': self.k_star,
+            'lattice_step': self.lattice_step,
+            'candidates': self.candidates,
         }
 
 
@@ -1219,6 +1233,178 @@ def reference_k(
     )
     mean, _ = _moments(values, probabilities)
     return mean / 2.0
+
+
+def design_k_from_shift(
+    n: int,
+    target_arl: float,
+    delta: float,
+    *,
+    statistic: str = 'SN',
+    sided: str = 'two',
+    distribution: str = 'normal',
+    tol: float = 0.10,
+    k_step: Optional[float] = None,
+    ic_rule: str = 'conservative',
+    max_candidates: int = 5_000,
+    method: str = 'auto',
+    n_sim: int = 200_000,
+    seed: Optional[int] = None,
+    quadrature_points: int = 2_001,
+) -> DesignResult:
+    """
+    Подбор ``(k, h)`` «от постановки задачи»: сдвиг → ``k``, номинал → ``h``.
+
+    Порядок соответствует книге (§ 3.2.2, стр. 67–72; § 4.3.2, стр. 232):
+    сначала фиксируется целевой сдвиг ``δ`` и из него берётся ``k``, затем
+    ``h`` подбирается так, чтобы ``ARL_IC`` не превышала номинала.
+
+    ``k`` не берётся «как есть» из ``k* = E[Z_δ]/2``: состояния CUSUM
+    лежат на решётке значений статистики, и ``k`` должно попадать на неё
+    (для ``SN``/``SR`` шаг значений 2, поэтому ``k`` целое). Иначе шаг
+    решётки ``gcd{|Z_t − k|}`` дробится до ``10⁻³``, пространство состояний
+    взрывается и ``design_h`` практически не считает.
+
+    Привязка к решётке — только первый шаг. Из-за ступенчатой ``ARL(h)``
+    «ближайшее» ``k`` может дать ``ARL_IC`` далеко от номинала, поэтому
+    проверяются три соседних узла ``k* ± step`` и выбирается тот, который
+    попадает в допуск ``tol`` и при этом ближе к ``k*``. Если в допуск не
+    попадает никто, берётся ближайший к ``k*`` узел с ``ARL_IC ≤`` номинала
+    (консервативное правило книги), а причина пишется в ``note``.
+
+    Parameters
+    ----------
+    n, target_arl, delta
+        Размер подгруппы, номинальная ``ARL_IC`` (> 1) и целевой сдвиг
+        (``δ ≠ 0``, в единицах σ).
+    statistic : {'SN', 'SR'}, default='SN'
+        Знаковая или знаково-ранговая статистика.
+    sided : {'upper', 'lower', 'two'}, default='two'
+        Тип карты.
+    distribution : str, default='normal'
+        Распределение процесса при сдвиге (для ``E[Z_δ]``).
+    tol : float, default=0.10
+        Допуск на относительное отклонение ``ARL_IC`` от номинала.
+    k_step : float, optional
+        Шаг решётки ``k``. По умолчанию ``z_step / 2`` (1 для ``SN``/``SR``).
+    ic_rule, max_candidates
+        Передаются в ``design_h``.
+    method, n_sim, seed, quadrature_points
+        Параметры распределения статистики под сдвигом.
+
+    Returns
+    -------
+    DesignResult
+        Выбранные ``k`` и ``h``, достигнутая ``ARL_IC``; дополнительно
+        ``k_star``, ``lattice_step`` и проверенные ``candidates``.
+
+    Notes
+    -----
+    ``k = E[Z_δ]/2`` — перенос правила ``k = δ/2`` параметрической карты на
+    непараметрическую статистику; сама книга для ``SN``/``SR`` задаёт лишь
+    порядок «``k`` — первым, обычно малым» (§ 3.2.2, стр. 71;
+    § 4.2.2.3.2, стр. 205). ``ARL_IC ≤`` номинала — консервативное правило
+    книги (стр. 71).
+
+    Examples
+    --------
+    >>> design = design_k_from_shift(14, 500.0, 1.5, statistic='SN')
+    >>> design.k, design.h                    # doctest: +SKIP
+    (6.0, 6.0)
+    """
+    statistic = statistic.upper()
+    if statistic not in {'SN', 'SR'}:
+        raise ValueError(
+            f"statistic должен быть 'SN' или 'SR', получено {statistic!r}"
+        )
+    if tol <= 0:
+        raise ValueError(f'Допуск tol должен быть > 0, получено {tol}')
+    if target_arl <= 1:
+        raise ValueError(
+            f'Целевая ARL должна быть > 1, получено {target_arl}'
+        )
+
+    k_star = reference_k(
+        n, delta, statistic=statistic, distribution=distribution,
+        method=method, n_sim=n_sim, seed=seed,
+    )
+
+    ic_values, _ = _shift_step_distribution(
+        n, 0.0, statistic, distribution,
+        method=method, n_sim=n_sim, seed=seed,
+        quadrature_points=quadrature_points,
+    )
+    z_step = _values_step(ic_values)
+    if z_step <= 0:
+        z_step = 1.0
+    if k_step is not None and k_step > 0:
+        step = float(k_step)
+    else:
+        step = z_step / 2.0
+
+    max_absolute = float(np.max(np.abs(ic_values)))
+    base = round(k_star / step) * step
+    candidates = sorted({
+        float(base + shift * step)
+        for shift in (-1, 0, 1)
+        if 0 < base + shift * step < max_absolute
+    })
+    if not candidates:
+        raise ValueError(
+            'Не удалось построить кандидатов k: k* вне диапазона статистики '
+            f'(k* = {k_star:.3f}, max|Z| = {max_absolute:g})'
+        )
+
+    designer = design_sign_h if statistic == 'SN' else design_signed_rank_h
+    results = [
+        designer(
+            n, target_arl, k, sided=sided,
+            max_candidates=max_candidates, ic_rule=ic_rule,
+        )
+        for k in candidates
+    ]
+
+    below = [item for item in results if item.arl <= target_arl]
+    acceptable = [item for item in below if item.relative_error <= tol]
+
+    if acceptable:
+        chosen = min(
+            acceptable,
+            key=lambda item: (abs(item.k - k_star), item.relative_error),
+        )
+        note = (
+            f'Выбран k = {chosen.k:g} — ближайший к k* = {k_star:.3f} узел '
+            f'решётки (шаг {step:g}) с ARL_IC в пределах {tol:.0%} '
+            f'от номинала'
+        )
+    elif below:
+        chosen = min(
+            below,
+            key=lambda item: (abs(item.k - k_star), item.relative_error),
+        )
+        note = (
+            f'Номинал ARL_IC = {target_arl:g} на решётке (шаг {step:g}) '
+            f'не достигается в пределах tol = {tol:.0%}; взят ближайший '
+            f'к k* = {k_star:.3f} узел с ARL_IC ≤ номинала'
+        )
+    else:
+        chosen = min(
+            results,
+            key=lambda item: (item.relative_error, abs(item.k - k_star)),
+        )
+        note = (
+            f'Ни один узел решётки (шаг {step:g}) не даёт ARL_IC ≤ '
+            f'{target_arl:g}; взят узел с наименьшим отклонением'
+        )
+
+    if chosen.note:
+        note = f'{note}. {chosen.note}'
+
+    chosen.note = note
+    chosen.k_star = k_star
+    chosen.lattice_step = step
+    chosen.candidates = tuple(candidates)
+    return chosen
 
 
 @dataclass

@@ -30,6 +30,7 @@ from nonparametric_charts.utils.run_length_design import (
     clear_run_length_cache,
     compare_arl_methods,
     design_h,
+    design_k_from_shift,
     design_kh,
     design_sign_h,
     design_sign_kh,
@@ -616,3 +617,55 @@ def test_chart_design_kh_uses_chart_size() -> None:
     rank_result = rank_chart.design_kh(500, 1.0)
     assert rank_result.n == 4
     assert rank_result.statistic == 'SR'
+
+
+# --------------------------------------------------------------------------- #
+#  Подбор k из целевого сдвига (design_k_from_shift)
+# --------------------------------------------------------------------------- #
+
+def test_design_k_from_shift_sn_n14() -> None:
+    """Реальная задача: ``n=14``, ``δ=1.5``, ``ARL_IC=500`` → ``k=6, h=6``."""
+    result = design_k_from_shift(14, 500.0, 1.5, statistic='SN')
+
+    assert result.statistic == 'SN'
+    assert result.k_star == pytest.approx(reference_k(14, 1.5, statistic='SN'))
+    assert result.lattice_step == pytest.approx(1.0)
+    assert result.candidates == (5.0, 6.0, 7.0)
+    assert (result.k, result.h) == (6.0, 6.0)
+    assert result.arl == pytest.approx(409.0, abs=0.1)
+    assert result.arl <= result.target_arl
+    # Номинал на решётке не достигается — причина зафиксирована.
+    assert 'не достигается' in result.note
+
+
+def test_design_k_from_shift_sr_n14() -> None:
+    """``SR``: ближайшее целое ``k=50`` хуже по бюджету, чем ``k=49``."""
+    result = design_k_from_shift(14, 500.0, 1.5, statistic='SR')
+
+    assert result.statistic == 'SR'
+    assert result.k_star == pytest.approx(
+        reference_k(14, 1.5, statistic='SR')
+    )
+    assert result.candidates == (49.0, 50.0, 51.0)
+    assert (result.k, result.h) == (49.0, 46.0)
+    assert result.arl == pytest.approx(497.7, abs=0.1)
+    assert result.relative_error <= 0.10
+    assert 'в пределах' in result.note
+
+
+def test_design_k_from_shift_k_lies_on_lattice() -> None:
+    """Выбранное ``k`` кратно шагу решётки (иначе дробится пространство)."""
+    for statistic in ('SN', 'SR'):
+        result = design_k_from_shift(14, 500.0, 1.5, statistic=statistic)
+        assert result.k % result.lattice_step == pytest.approx(0.0)
+
+
+def test_design_k_from_shift_validates_arguments() -> None:
+    with pytest.raises(ValueError, match='SN'):
+        design_k_from_shift(14, 500.0, 1.5, statistic='XX')
+    with pytest.raises(ValueError, match='tol'):
+        design_k_from_shift(14, 500.0, 1.5, tol=0.0)
+    with pytest.raises(ValueError, match='ARL'):
+        design_k_from_shift(14, 1.0, 1.5)
+    with pytest.raises(ValueError, match='δ'):
+        design_k_from_shift(14, 500.0, 0.0)
