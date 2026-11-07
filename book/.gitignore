@@ -1,0 +1,8 @@
+# Артефакты сборки LaTeX (исходники и собранный PDF — в git)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
