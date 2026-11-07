@@ -1,0 +1,83 @@
+\documentclass[12pt,a4paper]{report}
+
+% ========== Кодировки и язык ==========
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[russian]{babel}
+% Русский текст в формулах (\text{если } внутри cases и т. п.) пишем явно,
+% поэтому встроенное переключение языка в математике babel отключаем.
+\makeatletter
+\AtBeginDocument{%
+	\let\bbl@textmath\relax % не даём babel управлять \text внутри формул
+}
+\makeatother
+\renewcommand{\thesection}{\thechapter.\arabic{section}}
+
+% ========== Математика ==========
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+
+% ========== Графика и таблицы ==========
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{caption}
+\captionsetup{figureposition=bottom,tableposition=top}
+\usepackage{chngcntr}
+
+% ========== Геометрия ==========
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+%\usepackage{setspace}
+%\onehalfspacing
+
+% ========== Гиперссылки ==========
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+\usetikzlibrary{decorations.pathreplacing}
+
+% ========== Настройки подписей ==========
+\captionsetup[figure]{name=Рисунок, labelsep=period, font={small}, justification=centering}
+\captionsetup[table]{name=Таблица, labelsep=period}
+\counterwithin{figure}{chapter}
+\counterwithin{table}{chapter}
+\counterwithin{equation}{chapter}
+
+% ========== Пользовательские команды ==========
+\newcommand{\todo}[1]{\textbf{[TODO: #1]}}
+
+\title{Непараметрический статистический контроль процессов}
+\author{Субхабрата Чакраборти, Мариен Алет Грэм}
+\date{}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+\include{chapter-1.tex}
+\include{chapter-2.tex}
+\include{chapter-3.tex}
+\include{chapter-4.tex}
+
+
+% ======================================================================
+\appendix
+\chapter{Таблицы}
+\todo{перевод}
+
+\chapter{Программы}
+\todo{перевод}
+
+% ======================================================================
+% Библиография и индекс (при необходимости)
+% ======================================================================
+% \bibliographystyle{plain}
+% \bibliography{references}
+
+\end{document}

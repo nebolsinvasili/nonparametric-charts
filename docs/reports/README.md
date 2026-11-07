@@ -10,6 +10,7 @@
 | `cusum_verification.tex/.pdf` | непараметрические CUSUM-SN/SR |
 | `sr_macros.tex`, `cusum_macros.tex` | сгенерированные макросы графиков |
 | `cusum_plan.md` | рабочий план и журнал CUSUM |
+| `coverage_plan.md` | реестр покрытия книги: раздел → код → описание → проверка; план недостающих разделов |
 
 PDF-файлы коммитятся; вспомогательные `.aux/.log/.toc/.out` и `build/` —
 нет.

@@ -52,6 +52,12 @@
    `README.md`, `experiments/README.md`, `experiments/cusum/README.md`,
    `docs/reports/README.md`, `notebooks/README.md`,
    `.opencode/memory/preferences.md`.
+10. **Перевод книги и реализация — по единому реестру.** Перевод живёт в
+    `book/` (LaTeX, `make -C book check`), реализация — в `src/`, `examples/`,
+    `notebooks/`. Статус обоих ведётся в `docs/reports/coverage_plan.md`;
+    после каждой порции перевода или кода обновлять реестр, `book/README.md`
+    и `EXPECTED_TODO` в `book/check_translation.py`. Непереведённое помечается
+    `\todo{...}`, отсутствующие рисунки — в дефектах `book/README.md`.
 
 ## Навигация
 
@@ -75,8 +81,10 @@
 | Шаблоны | `.opencode/templates/` (`new-chart`, `chart-plan`, `notebook-structure`, `report-structure`) |
 | Порядок построения новой карты | `.opencode/commands/new-chart.md` |
 | Рабочие документы карт (план/досье) | `docs/reports/<chart>_plan.md` |
+| Реестр покрытия книги и план | `docs/reports/coverage_plan.md` |
 | Сабагенты | `.opencode/agents/` (`book-checker`, `notebook-writer`) |
 | Отчёты (TeX/PDF, сборка) | `docs/reports/` |
+| Перевод книги (LaTeX) | `book/README.md`, `book/glossary.md` |
 | Источники (книги, статьи) | `docs/ref/` |
 | Проверка примеров книги (консоль + графики) | `examples/` |
 | Эксперименты (R/Python) и инструкции | `experiments/` |
